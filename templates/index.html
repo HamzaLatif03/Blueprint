@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blueprint</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">📐</span>
+        <span class="logo-text">BLUEPRINT</span>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item nav-item-protected hidden" data-tab="uni">📚 University opportunities</a>
+        <a href="#" class="nav-item nav-item-protected hidden" data-tab="interview">🎤 Mock interviews</a>
+        <a href="#" class="nav-item nav-item-protected hidden" data-tab="jobs">📋 Job tracking</a>
+      </nav>
+      <div id="claude-status" class="sidebar-status" title="Claude powers University opportunities and Mock interviews">Checking…</div>
+    </aside>
+
+    <main class="main">
+      <header id="main-header" class="main-header hidden">
+        <div class="main-header-spacer"></div>
+        <div class="user-menu-wrap">
+          <button type="button" class="user-menu-btn" id="user-menu-btn" aria-label="Account menu" aria-expanded="false" aria-haspopup="true">
+            <span class="user-menu-icon" id="user-menu-icon">?</span>
+          </button>
+          <div id="user-dropdown" class="user-dropdown hidden" role="menu">
+            <a href="#" class="user-dropdown-item" data-action="profile" role="menuitem">👤 Profile</a>
+            <button type="button" class="user-dropdown-item user-dropdown-item-logout" data-action="logout" role="menuitem">Log out</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="main-content">
+      <!-- Tab: Sign in / Create account (default first view) -->
+      <section id="tab-auth" class="tab-panel active">
+        <div class="auth-page-wrap">
+          <div class="auth-page-card">
+            <h1 class="auth-page-title">Welcome to Blueprint</h1>
+            <p class="auth-page-desc">Sign in or create an account to continue.</p>
+            <div class="card auth-card">
+              <div id="auth-form-wrap">
+                <div class="auth-tabs">
+                  <button type="button" class="auth-tab active" data-mode="signin">Sign in</button>
+                  <button type="button" class="auth-tab" data-mode="signup">Create account</button>
+                </div>
+                <form id="auth-form" class="auth-form">
+                  <input type="email" id="auth-email" class="input" placeholder="Email" required autocomplete="email" />
+                  <input type="password" id="auth-password" class="input" placeholder="Password" required autocomplete="current-password" />
+                  <div id="auth-error" class="auth-error hidden"></div>
+                  <button type="submit" class="btn-primary" id="auth-submit">Sign in</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Profile (universities + CV) - only when signed in -->
+      <section id="tab-profile" class="tab-panel tab-panel-protected hidden">
+        <h1 class="page-title">Profile</h1>
+        <p class="page-desc">Your education and CV for applications and matching.</p>
+        <div class="card">
+          <h2 class="card-title">UNIVERSITIES</h2>
+          <p class="page-desc" style="margin-top:0;">Add where you studied or are studying, with estimated time there.</p>
+          <div class="form-row">
+            <input type="text" id="profile-uni-name" class="input" placeholder="University name" />
+            <input type="text" id="profile-uni-start" class="input" placeholder="Start (e.g. 2020)" style="max-width:100px;" />
+            <input type="text" id="profile-uni-end" class="input" placeholder="End or Present" style="max-width:120px;" />
+            <button type="button" class="btn-primary" id="profile-uni-add">Add</button>
+          </div>
+          <ul id="profile-universities-list" class="profile-list"></ul>
+        </div>
+        <div class="card">
+          <h2 class="card-title">CV</h2>
+          <p class="page-desc" style="margin-top:0;">Choose a PDF to preview below. File is not saved.</p>
+          <div class="form-row">
+            <input type="file" id="profile-cv-input" class="input" accept=".pdf,.doc,.docx" />
+            <button type="button" class="btn-primary" id="profile-cv-upload">Upload CV</button>
+          </div>
+          <div id="profile-cv-status" class="profile-cv-status"></div>
+          <div id="profile-cv-preview" class="profile-cv-preview hidden"></div>
+        </div>
+      </section>
+
+      <!-- Tab: University opportunities -->
+      <section id="tab-uni" class="tab-panel tab-panel-protected hidden">
+        <h1 class="page-title">University opportunities</h1>
+        <p class="page-desc">Find PhD and Masters programmes that match your interests.</p>
+        <div class="idea-input-wrap">
+          <label class="idea-label">YOUR INTERESTS & BACKGROUND</label>
+          <div class="idea-field">
+            <input type="text" id="programmes-interests" class="idea-input" placeholder="e.g. Machine learning, sustainability, policy" />
+            <button type="button" class="idea-search-btn" id="programmes-search-btn" aria-label="Search">🔍</button>
+          </div>
+          <div class="form-row" style="margin-top:0.5rem;">
+            <input type="text" id="programmes-background" class="input" placeholder="Background (e.g. BSc Computer Science)" style="flex:1;" />
+            <select id="programmes-degree-type">
+              <option value="">PhD & Masters</option>
+              <option value="phd">PhD only</option>
+              <option value="masters">Masters only</option>
+            </select>
+          </div>
+        </div>
+        <div class="card">
+          <h2 class="card-title">MATCHED PROGRAMMES</h2>
+          <div id="programmes-list" class="match-list">
+            <p class="placeholder">Enter your interests and click search.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Mock interviews -->
+      <section id="tab-interview" class="tab-panel tab-panel-protected hidden">
+        <h1 class="page-title">Mock interviews</h1>
+        <p class="page-desc">See yourself on camera, speak your answer (we transcribe it), then get AI feedback. More realistic practice.</p>
+        <div class="two-col">
+          <div class="card">
+            <h2 class="card-title">PRACTICE QUESTION</h2>
+            <div class="form-row">
+              <input type="text" id="interview-role" class="input" placeholder="Role (e.g. Software Engineer)" />
+              <button type="button" class="btn-primary" id="interview-get-question">Get question</button>
+            </div>
+            <div class="interview-question-box" id="interview-question-box">
+              <p class="placeholder">Enter a role and click "Get question" to receive an interview question.</p>
+            </div>
+            <h2 class="card-title">SELF VIEW & RECORD</h2>
+            <div class="self-view-wrap">
+              <video id="interview-self-view" class="self-view-video" playsinline muted></video>
+              <div id="interview-placeholder" class="self-view-placeholder">Camera off</div>
+              <div id="interview-recording-dot" class="recording-dot hidden">● Recording</div>
+            </div>
+            <div class="form-row">
+              <button type="button" class="btn-secondary" id="interview-start-camera">Start camera</button>
+              <button type="button" class="btn-primary" id="interview-start-speak" disabled>Start speaking</button>
+              <button type="button" class="btn-primary btn-danger" id="interview-stop-speak" disabled>Stop speaking</button>
+            </div>
+            <label class="idea-label">YOUR ANSWER <span class="label-hint">(from your speech — or type below)</span></label>
+            <textarea id="interview-answer" class="textarea" rows="4" placeholder="Speak your answer using the buttons above, or type here..."></textarea>
+            <button type="button" class="btn-primary" id="interview-submit-answer">Get feedback</button>
+          </div>
+          <div class="card">
+            <h2 class="card-title">FEEDBACK</h2>
+            <div id="interview-feedback" class="interview-feedback">
+              <p class="placeholder">Submit an answer to see AI feedback and score.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: Job tracking -->
+      <section id="tab-jobs" class="tab-panel tab-panel-protected hidden">
+        <h1 class="page-title">Job tracking</h1>
+        <p class="page-desc">Track your job applications in one place.</p>
+        <div class="card">
+          <h2 class="card-title">YOUR APPLICATIONS</h2>
+          <div class="form-row">
+            <input type="text" id="app-company" class="input" placeholder="Company" />
+            <input type="text" id="app-role" class="input" placeholder="Role" />
+            <select id="app-status">
+              <option value="Applied">Applied</option>
+              <option value="Interview">Interview</option>
+              <option value="Offer">Offer</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+            <button type="button" class="btn-primary" id="app-add-btn">Add</button>
+          </div>
+          <div id="application-list" class="application-list"></div>
+        </div>
+      </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+</body>
+</html>

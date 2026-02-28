@@ -1,39 +1,90 @@
 import { motion } from "framer-motion";
-import { Mic, GraduationCap, Briefcase, ArrowRight, Sparkles } from "lucide-react";
+import { Mic, GraduationCap, Briefcase, ArrowRight, Sparkles, Trophy, Flame, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
-const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0 } };
+const fadeUp = { hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
+const stagger = { visible: { transition: { staggerChildren: 0.15 } } };
 
 const cards = [
-  { title: "Mock Interviews", desc: "Practice with AI feedback and scoring", icon: Mic, color: "from-primary/20 to-primary/5 hover:from-primary/30", iconBg: "bg-primary/15 text-primary", href: "/mock-interviews" },
-  { title: "Postgrad", desc: "Find PhD & Masters programmes matched to you", icon: GraduationCap, color: "from-accent/20 to-accent/5 hover:from-accent/30", iconBg: "bg-accent/15 text-accent", href: "/postgrad" },
-  { title: "Job Tracking", desc: "Track all your applications in one place", icon: Briefcase, color: "from-secondary/20 to-secondary/5 hover:from-secondary/30", iconBg: "bg-secondary/15 text-secondary", href: "/job-tracking" },
+  { title: "Mock Interviews", desc: "Practice with AI feedback and earn XP", icon: Mic, gradient: "from-primary to-primary/60", iconBg: "bg-primary/15 text-primary", href: "/mock-interviews", emoji: "🎤" },
+  { title: "Postgrad", desc: "Find your perfect programme match", icon: GraduationCap, gradient: "from-accent to-accent/60", iconBg: "bg-accent/15 text-accent", href: "/postgrad", emoji: "🎓" },
+  { title: "Job Tracking", desc: "Track applications like a pro", icon: Briefcase, gradient: "from-secondary to-secondary/60", iconBg: "bg-secondary/15 text-secondary", href: "/job-tracking", emoji: "💼" },
 ];
 
 const Dashboard = () => {
   const { user } = useAuth();
 
   return (
-    <motion.div className="max-w-4xl mx-auto" initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.12 } } }}>
-      <motion.div variants={fadeUp} className="mb-10">
-        <div className="flex items-center gap-2 mb-1"><Sparkles className="h-5 w-5 text-primary" /><span className="text-sm font-medium text-primary">Blueprint</span></div>
-        <h1 className="text-4xl font-bold tracking-tight">Welcome back{user?.user_metadata?.display_name ? `, ${user.user_metadata.display_name}` : ""}</h1>
-        <p className="text-lg text-muted-foreground mt-2">Your career toolkit — practice, discover, and track.</p>
+    <motion.div className="max-w-5xl mx-auto" initial="hidden" animate="visible" variants={stagger}>
+      {/* Hero Section */}
+      <motion.div variants={fadeUp} className="mb-10 relative">
+        <div className="absolute -top-4 -left-4 w-20 h-20 rounded-full bg-primary/10 blur-2xl animate-float" />
+        <div className="absolute top-0 right-10 w-16 h-16 rounded-full bg-accent/10 blur-xl animate-float" style={{ animationDelay: "1s" }} />
+        
+        <div className="flex items-center gap-3 mb-2">
+          <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.5 }} className="p-2 rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-foreground">
+            <Sparkles className="h-5 w-5" />
+          </motion.div>
+          <span className="text-sm font-bold uppercase tracking-widest gradient-text">Blueprint</span>
+        </div>
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
+          Welcome back{user?.user_metadata?.display_name ? `, ${user.user_metadata.display_name}` : ""} 
+          <motion.span 
+            className="inline-block ml-2" 
+            animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }} 
+            transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+          >
+            👋
+          </motion.span>
+        </h1>
+        <p className="text-lg text-muted-foreground mt-3">Your career toolkit — practice, discover, and track.</p>
+
+        {/* XP / Streak bar */}
+        <motion.div variants={fadeUp} className="mt-6 flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-medium">
+            <Flame className="h-4 w-4 text-[hsl(var(--streak))]" />
+            <span>0 day streak</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-medium">
+            <Zap className="h-4 w-4 text-[hsl(var(--xp-bar))]" />
+            <span>0 XP</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-medium">
+            <Trophy className="h-4 w-4 text-[hsl(var(--level))]" />
+            <span>Level 1</span>
+          </div>
+        </motion.div>
       </motion.div>
 
+      {/* Feature Cards */}
       <div className="grid gap-5 sm:grid-cols-3">
-        {cards.map((item) => (
+        {cards.map((item, i) => (
           <motion.div key={item.title} variants={fadeUp}>
-            <Link to={item.href} className={`block rounded-2xl p-6 bg-gradient-to-br ${item.color} transition-all hover:shadow-lg hover:-translate-y-1 group`}>
-              <div className={`h-11 w-11 rounded-xl ${item.iconBg} flex items-center justify-center mb-4`}>
-                <item.icon className="h-5 w-5" />
-              </div>
-              <h3 className="font-bold text-lg text-foreground">{item.title}</h3>
-              <p className="text-sm text-muted-foreground mt-1">{item.desc}</p>
-              <div className="mt-4 flex items-center gap-1 text-sm font-medium text-foreground/70 group-hover:text-foreground transition-colors">
-                Get started <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
-              </div>
+            <Link to={item.href}>
+              <motion.div 
+                whileHover={{ y: -8, scale: 1.02 }} 
+                whileTap={{ scale: 0.98 }}
+                className="relative rounded-2xl p-6 bg-card border border-border/50 hover:border-primary/30 transition-colors overflow-hidden card-glow card-glow-hover group cursor-pointer"
+              >
+                {/* Gradient accent top bar */}
+                <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${item.gradient}`} />
+                
+                <div className="flex items-center justify-between mb-4">
+                  <motion.div 
+                    className={`h-12 w-12 rounded-xl ${item.iconBg} flex items-center justify-center`}
+                    whileHover={{ rotate: 12 }}
+                  >
+                    <item.icon className="h-6 w-6" />
+                  </motion.div>
+                  <span className="text-2xl">{item.emoji}</span>
+                </div>
+                <h3 className="font-bold text-lg text-foreground">{item.title}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{item.desc}</p>
+                <div className="mt-5 flex items-center gap-1 text-sm font-semibold text-primary group-hover:gap-2 transition-all">
+                  Let's go <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </motion.div>
             </Link>
           </motion.div>
         ))}

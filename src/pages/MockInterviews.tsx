@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, Send, Video, Star, Loader2, Sparkles, Trophy, Zap, ArrowRight, RotateCcw } from "lucide-react";
+import { Mic, MicOff, Send, Video, Star, Loader2, Sparkles, Trophy, Zap, ArrowRight, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -24,6 +24,78 @@ const MockInterviews = () => {
   const [loadingF, setLoadingF] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
   const [totalXP, setTotalXP] = useState(0);
+
+  // Webcam
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // Speech-to-text
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch {
+      toast.error("Could not access camera. Check permissions.");
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Speech recognition not supported in this browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-GB";
+
+    let finalTranscript = answer;
+
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += (finalTranscript ? " " : "") + transcript;
+          setAnswer(finalTranscript);
+        } else {
+          interim += transcript;
+        }
+      }
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+    toast.success("🎙️ Listening... speak your answer!");
+  }, [isListening, answer]);
 
   const generateQuestion = async () => {
     setLoadingQ(true);
@@ -41,6 +113,10 @@ const MockInterviews = () => {
 
   const submitAnswer = async () => {
     if (!answer.trim() || !question) return;
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    }
     setLoadingF(true);
     try {
       const { data } = await supabase.functions.invoke("interview-ai", {
@@ -59,8 +135,26 @@ const MockInterviews = () => {
   const startInterview = () => {
     if (!role.trim()) return;
     setStarted(true);
+    startCamera();
     generateQuestion();
   };
+
+  const endInterview = () => {
+    stopCamera();
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    }
+    setStarted(false);
+    setQuestion(null);
+    setFeedback(null);
+    setQuestionCount(0);
+    setTotalXP(0);
+  };
+
+  useEffect(() => {
+    return () => { stopCamera(); recognitionRef.current?.stop(); };
+  }, [stopCamera]);
 
   const scoreColor = (s: number) => s >= 8 ? "text-accent" : s >= 5 ? "text-[hsl(var(--xp-bar))]" : "text-destructive";
   const scoreEmoji = (s: number) => s >= 9 ? "🔥" : s >= 7 ? "💪" : s >= 5 ? "👍" : "📝";
@@ -103,7 +197,7 @@ const MockInterviews = () => {
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Sparkles className="h-5 w-5 text-primary" /> Set Up Your Interview
                 </CardTitle>
-                <CardDescription>Tell us about the role — we'll tailor the questions to you.</CardDescription>
+                <CardDescription>Tell us about the role — we'll tailor the questions to you. Your webcam and mic will be used.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -126,20 +220,16 @@ const MockInterviews = () => {
           </motion.div>
         ) : (
           <motion.div key="interview" initial="hidden" animate="visible" variants={stagger} className="grid gap-6 lg:grid-cols-5">
-            {/* Camera / Video area */}
+            {/* Camera */}
             <motion.div variants={fadeUp} className="lg:col-span-2 space-y-4">
               <Card className="overflow-hidden card-glow">
-                <div className="aspect-video bg-gradient-to-br from-muted via-muted/80 to-primary/5 flex items-center justify-center relative">
-                  <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity }} className="text-center space-y-2">
-                    <Video className="h-14 w-14 text-muted-foreground/30 mx-auto" />
-                    <p className="text-sm text-muted-foreground font-medium">Camera preview</p>
-                  </motion.div>
+                <div className="aspect-video bg-gradient-to-br from-muted via-muted/80 to-primary/5 relative overflow-hidden">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0" />
                   <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring" }}>
-                    <Badge className="absolute top-3 left-3 bg-destructive text-destructive-foreground text-xs gap-1 animate-pulse">
+                    <Badge className="absolute top-3 left-3 bg-destructive text-destructive-foreground text-xs gap-1 animate-pulse z-10">
                       <span className="h-1.5 w-1.5 rounded-full bg-destructive-foreground" /> LIVE
                     </Badge>
                   </motion.div>
-                  {/* XP bar */}
                   <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-muted">
                     <motion.div className="h-full xp-gradient rounded-r-full" animate={{ width: `${Math.min(100, totalXP / 5)}%` }} transition={{ duration: 0.5 }} />
                   </div>
@@ -151,7 +241,7 @@ const MockInterviews = () => {
                   <p className="font-bold text-lg text-foreground">{role}</p>
                   {industry && <Badge variant="secondary" className="mt-1">{industry}</Badge>}
                   <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button variant="outline" size="sm" className="mt-4 w-full gap-2" onClick={() => { setStarted(false); setQuestion(null); setFeedback(null); setQuestionCount(0); setTotalXP(0); }}>
+                    <Button variant="outline" size="sm" className="mt-4 w-full gap-2" onClick={endInterview}>
                       <RotateCcw className="h-3.5 w-3.5" /> End & Reset
                     </Button>
                   </motion.div>
@@ -161,7 +251,6 @@ const MockInterviews = () => {
 
             {/* Question + Answer + Feedback */}
             <motion.div variants={fadeUp} className="lg:col-span-3 space-y-4">
-              {/* AI Question */}
               <Card className="border-primary/20 card-glow overflow-hidden relative">
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-secondary" />
                 <CardHeader className="pb-3">
@@ -191,13 +280,12 @@ const MockInterviews = () => {
                 </CardContent>
               </Card>
 
-              {/* Answer box */}
               {question && !loadingQ && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                   <Card className="card-glow">
                     <CardContent className="pt-5 space-y-4">
                       <Label className="font-semibold text-base">Your Answer ✍️</Label>
-                      <Textarea placeholder="Type your answer here... Be specific with examples!" rows={5} value={answer} onChange={(e) => setAnswer(e.target.value)} className="resize-none text-base" />
+                      <Textarea placeholder="Type your answer or use the mic button to speak..." rows={5} value={answer} onChange={(e) => setAnswer(e.target.value)} className="resize-none text-base" />
                       <div className="flex gap-2 flex-wrap">
                         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                           <Button onClick={submitAnswer} disabled={!answer.trim() || loadingF} className="gap-2 font-bold">
@@ -205,16 +293,31 @@ const MockInterviews = () => {
                             Submit for Review
                           </Button>
                         </motion.div>
+                        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                          <Button
+                            variant={isListening ? "destructive" : "outline"}
+                            onClick={toggleListening}
+                            className="gap-2 font-bold"
+                          >
+                            {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                            {isListening ? "Stop Listening" : "Use Mic 🎙️"}
+                          </Button>
+                        </motion.div>
                         <Button variant="outline" onClick={generateQuestion} disabled={loadingQ} className="gap-2">
                           <ArrowRight className="h-4 w-4" /> Skip / Next
                         </Button>
                       </div>
+                      {isListening && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-sm text-destructive font-medium">
+                          <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                          Listening... speak now
+                        </motion.div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
               )}
 
-              {/* Feedback / Review */}
               <AnimatePresence>
                 {feedback && (
                   <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: "spring", duration: 0.5 }}>

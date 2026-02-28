@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap } from "lucide-react";
+import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ const JobTracking = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ company: "", role: "", status: "applied", url: "", notes: "" });
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const fetchApps = async () => {
     if (!user) return;
@@ -43,26 +45,48 @@ const JobTracking = () => {
 
   const addApp = async () => {
     if (!form.company.trim() || !form.role.trim() || !user) return;
-    const { error } = await supabase.from("job_applications").insert({ ...form, user_id: user.id } as any);
-    if (error) { toast.error("Failed to add"); return; }
-    toast.success("🎉 Application tracked!");
+    // Optimistic add
+    const tempId = crypto.randomUUID();
+    const newApp: JobApp = { id: tempId, company: form.company, role: form.role, status: form.status, applied_date: new Date().toISOString(), notes: form.notes || null, url: form.url || null };
+    setApps((prev) => [newApp, ...prev]);
     setForm({ company: "", role: "", status: "applied", url: "", notes: "" });
     setDialogOpen(false);
-    fetchApps();
+    toast.success("🎉 Application tracked!");
+
+    const { error } = await supabase.from("job_applications").insert({ ...form, user_id: user.id } as any);
+    if (error) {
+      toast.error("Failed to save — reverting");
+      setApps((prev) => prev.filter((a) => a.id !== tempId));
+    } else {
+      // Replace temp with real data
+      fetchApps();
+    }
   };
 
   const updateStatus = async (id: string, status: string) => {
-    await supabase.from("job_applications").update({ status } as any).eq("id", id);
+    // Optimistic update
+    setApps((prev) => prev.map((a) => a.id === id ? { ...a, status } : a));
     const emoji = statusConfig[status]?.emoji || "";
     toast.success(`${emoji} Status updated!`);
-    fetchApps();
+    await supabase.from("job_applications").update({ status } as any).eq("id", id);
   };
 
   const deleteApp = async (id: string) => {
-    await supabase.from("job_applications").delete().eq("id", id);
+    // Optimistic delete
+    const prev = apps;
+    setApps((a) => a.filter((x) => x.id !== id));
     toast.success("Removed");
-    fetchApps();
+    const { error } = await supabase.from("job_applications").delete().eq("id", id);
+    if (error) {
+      toast.error("Failed to delete");
+      setApps(prev);
+    }
   };
+
+  const filteredApps = useMemo(() => {
+    if (statusFilter === "all") return apps;
+    return apps.filter((a) => a.status === statusFilter);
+  }, [apps, statusFilter]);
 
   const stats = {
     total: apps.length,
@@ -81,7 +105,12 @@ const JobTracking = () => {
             Job Tracking
             <span className="text-2xl">💼</span>
           </h1>
-          <p className="mt-2 text-muted-foreground">Track all your applications in one place.</p>
+          <p className="mt-2 text-muted-foreground">
+            Track all your applications in one place.{" "}
+            <a href="https://the-trackr.com/" target="_blank" rel="noopener noreferrer" className="text-secondary hover:underline font-medium inline-flex items-center gap-1">
+              Browse Trackr <ExternalLink className="h-3 w-3" />
+            </a>
+          </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -131,6 +160,29 @@ const JobTracking = () => {
         </motion.div>
       )}
 
+      {/* Status Filter */}
+      {apps.length > 0 && (
+        <motion.div variants={fadeUp} className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-muted-foreground">Filter by status</span>
+          </div>
+          <ToggleGroup type="single" value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)} className="justify-start gap-0 rounded-xl border border-border overflow-hidden p-0.5 bg-muted flex-wrap">
+            <ToggleGroupItem value="all" className="rounded-lg px-4 py-2 text-sm font-semibold data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground data-[state=on]:shadow-sm transition-all">
+              All ({apps.length})
+            </ToggleGroupItem>
+            {Object.entries(statusConfig).map(([key, val]) => {
+              const count = apps.filter((a) => a.status === key).length;
+              return (
+                <ToggleGroupItem key={key} value={key} className="rounded-lg px-4 py-2 text-sm font-semibold data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground data-[state=on]:shadow-sm transition-all">
+                  {val.emoji} {val.label} ({count})
+                </ToggleGroupItem>
+              );
+            })}
+          </ToggleGroup>
+        </motion.div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-secondary" /></div>
       ) : apps.length === 0 ? (
@@ -145,10 +197,17 @@ const JobTracking = () => {
             </CardContent>
           </Card>
         </motion.div>
+      ) : filteredApps.length === 0 ? (
+        <motion.div variants={fadeUp}>
+          <Card className="card-glow"><CardContent className="py-10 text-center text-muted-foreground">
+            <p className="text-4xl mb-3">{statusConfig[statusFilter]?.emoji || "🔍"}</p>
+            <p className="font-medium">No {statusConfig[statusFilter]?.label?.toLowerCase() || ""} applications.</p>
+          </CardContent></Card>
+        </motion.div>
       ) : (
         <motion.div className="space-y-3">
           <AnimatePresence>
-            {apps.map((app, i) => {
+            {filteredApps.map((app, i) => {
               const cfg = statusConfig[app.status] || statusConfig.applied;
               return (
                 <motion.div 

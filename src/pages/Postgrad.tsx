@@ -1,19 +1,18 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GraduationCap, Search, Loader2, MapPin, BarChart3, Sparkles, Trophy } from "lucide-react";
+import { GraduationCap, Search, Loader2, MapPin, BarChart3, Sparkles, Trophy, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { supabase } from "@/integrations/supabase/client";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 
-type Programme = { name: string; institution: string; degree_type: string; match_pct: number; focus: string; location: string };
+type Programme = { name: string; institution: string; degree_type: string; match_pct: number; focus: string; location: string; url?: string };
 
 const matchColor = (pct: number) => pct >= 85 ? "text-accent" : pct >= 70 ? "text-[hsl(var(--xp-bar))]" : "text-secondary";
 const matchEmoji = (pct: number) => pct >= 90 ? "🔥" : pct >= 80 ? "⭐" : pct >= 70 ? "👍" : "📝";
@@ -96,7 +95,6 @@ const Postgrad = () => {
         </Card>
       </motion.div>
 
-      {/* Loading skeleton */}
       {loading && (
         <div className="space-y-3">
           {[1, 2, 3, 4].map((i) => (
@@ -111,7 +109,7 @@ const Postgrad = () => {
             {results.length > 0 && (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 mb-4">
                 <Trophy className="h-5 w-5 text-[hsl(var(--xp-bar))]" />
-                <span className="text-sm font-bold">{results.length} programmes found!</span>
+                <span className="text-sm font-bold">{results.length} programmes found — ranked by match!</span>
               </motion.div>
             )}
             {results.length === 0 ? (
@@ -123,38 +121,47 @@ const Postgrad = () => {
               results.map((prog, i) => (
                 <motion.div key={i} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}>
                   <motion.div whileHover={{ x: 4 }}>
-                    <Card className="card-glow card-glow-hover hover:border-accent/30 transition-all group overflow-hidden relative">
-                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${prog.match_pct >= 85 ? "bg-accent" : prog.match_pct >= 70 ? "bg-[hsl(var(--xp-bar))]" : "bg-secondary"}`} />
-                      <CardContent className="py-4 pl-5 flex flex-col sm:flex-row sm:items-center gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <h3 className="font-bold text-foreground">{prog.name}</h3>
-                            <Badge variant={prog.degree_type === "PhD" ? "default" : "secondary"} className="text-xs font-bold">{prog.degree_type}</Badge>
-                            <span>{matchEmoji(prog.match_pct)}</span>
+                    <a
+                      href={prog.url || `https://www.google.com/search?q=${encodeURIComponent(`${prog.name} ${prog.institution} programme`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <Card className="card-glow card-glow-hover hover:border-accent/30 transition-all group overflow-hidden relative cursor-pointer">
+                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${prog.match_pct >= 85 ? "bg-accent" : prog.match_pct >= 70 ? "bg-[hsl(var(--xp-bar))]" : "bg-secondary"}`} />
+                        <CardContent className="py-4 pl-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="text-lg font-bold">{i + 1}.</span>
+                              <h3 className="font-bold text-foreground group-hover:text-accent transition-colors">{prog.name}</h3>
+                              <Badge variant={prog.degree_type === "PhD" ? "default" : "secondary"} className="text-xs font-bold">{prog.degree_type}</Badge>
+                              <span>{matchEmoji(prog.match_pct)}</span>
+                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <p className="text-sm text-muted-foreground font-medium">{prog.institution}</p>
+                            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {prog.location}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{prog.focus}</span>
+                            </div>
                           </div>
-                          <p className="text-sm text-muted-foreground font-medium">{prog.institution}</p>
-                          <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {prog.location}</span>
-                            <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{prog.focus}</span>
+                          <div className="sm:w-36 text-right space-y-1.5">
+                            <div className="flex items-center gap-2 justify-end">
+                              <BarChart3 className="h-4 w-4 text-accent" />
+                              <span className={`text-2xl font-black ${matchColor(prog.match_pct)}`}>{prog.match_pct}%</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                              <motion.div 
+                                className="h-full rounded-full xp-gradient" 
+                                initial={{ width: 0 }} 
+                                animate={{ width: `${prog.match_pct}%` }} 
+                                transition={{ duration: 0.6, delay: i * 0.1 }}
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground font-medium">match</p>
                           </div>
-                        </div>
-                        <div className="sm:w-36 text-right space-y-1.5">
-                          <div className="flex items-center gap-2 justify-end">
-                            <BarChart3 className="h-4 w-4 text-accent" />
-                            <span className={`text-2xl font-black ${matchColor(prog.match_pct)}`}>{prog.match_pct}%</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <motion.div 
-                              className="h-full rounded-full xp-gradient" 
-                              initial={{ width: 0 }} 
-                              animate={{ width: `${prog.match_pct}%` }} 
-                              transition={{ duration: 0.6, delay: i * 0.1 }}
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground font-medium">match</p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
+                    </a>
                   </motion.div>
                 </motion.div>
               ))

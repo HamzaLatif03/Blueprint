@@ -271,17 +271,17 @@ const JobTracking = () => {
         </motion.div>
       ) : (
         <motion.div className="space-y-3">
-          <AnimatePresence mode="popLayout">
+          <AnimatePresence initial={false}>
             {filteredApps.map((app) => {
               const cfg = statusConfig[app.status] || statusConfig.applied;
               return (
                 <motion.div
                   key={app.id}
                   layout
-                  initial={{ opacity: 0, height: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, height: "auto", scale: 1 }}
-                  exit={{ opacity: 0, height: 0, scale: 0.95, transition: { opacity: { duration: 0.15 }, height: { duration: 0.25, delay: 0.1 }, scale: { duration: 0.15 } } }}
-                  transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1], layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto", transition: { height: { duration: 0.3, ease: [0.4, 0, 0.2, 1] }, opacity: { duration: 0.2, delay: 0.15 } } }}
+                  exit={{ opacity: 0, height: 0, transition: { opacity: { duration: 0.15 }, height: { duration: 0.25, delay: 0.1, ease: [0.4, 0, 0.2, 1] } } }}
+                  transition={{ layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } }}
                   style={{ overflow: "hidden" }}
                 >
                   <motion.div whileHover={{ x: 4 }}>

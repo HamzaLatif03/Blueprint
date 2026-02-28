@@ -22,7 +22,7 @@ serve(async (req) => {
       messages: [
         {
           role: "system",
-          content: "You suggest postgraduate programmes. Reply with a JSON array of 4-6 objects: {\"name\": \"...\", \"institution\": \"...\", \"degree_type\": \"PhD|Masters\", \"match_pct\": 0-100, \"focus\": \"...\", \"location\": \"...\"}. Only output the JSON array.",
+          content: `You suggest postgraduate programmes. Reply with a JSON array of 4-6 objects: {"name": "...", "institution": "...", "degree_type": "PhD|Masters", "match_pct": 0-100, "focus": "...", "location": "...", "url": "..."}. The "url" field MUST be the real official programme page URL from the institution's website. Only output the JSON array. ${want !== "both" ? `ONLY suggest ${want} programmes, do NOT include any other type.` : ""}`,
         },
         {
           role: "user",
@@ -41,6 +41,15 @@ serve(async (req) => {
     programmes = arrMatch ? JSON.parse(arrMatch[0]) : [];
   } catch {
     programmes = [];
+  }
+
+  // Sort by match_pct descending
+  programmes.sort((a: any, b: any) => (b.match_pct || 0) - (a.match_pct || 0));
+
+  // Filter by degree type if specified
+  if (want !== "both") {
+    const filter = want.toLowerCase();
+    programmes = programmes.filter((p: any) => p.degree_type?.toLowerCase().includes(filter));
   }
 
   return new Response(JSON.stringify({ programmes }), {

@@ -19,8 +19,8 @@ serve(async (req) => {
     systemPrompt = "You are an expert interviewer. Generate exactly one interview question. Reply with JSON: {\"question\": \"...\", \"question_type\": \"behavioral|technical|situational\"}";
     userPrompt = `Generate an interview question for role: "${role || "general"}", industry: "${industry || "general"}". Make it specific and challenging.`;
   } else if (action === "get_feedback") {
-    systemPrompt = "You are an expert interview coach. Evaluate the candidate's answer. Reply with JSON: {\"score\": 1-10, \"feedback\": \"...\", \"strengths\": [\"...\"], \"improvements\": [\"...\"]}";
-    userPrompt = `Question: "${question}"\nAnswer: "${answer}"\nRole: "${role || "general"}"\n\nRate this answer and provide actionable feedback.`;
+    systemPrompt = `You are a supportive and encouraging interview coach. Evaluate the candidate's answer generously — focus on what they did well and give constructive suggestions. Be kind but honest. Scores should reflect genuine effort: a reasonable attempt should score 6-7, a good answer 7-8, and only truly poor answers below 5. Most answers from someone genuinely trying should land between 6-9. Reply with JSON: {"score": 1-10, "feedback": "...", "strengths": ["..."], "improvements": ["..."]}`;
+    userPrompt = `Question: "${question}"\nAnswer: "${answer}"\nRole: "${role || "general"}"\n\nRate this answer generously and provide encouraging, actionable feedback.`;
   }
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -39,7 +39,6 @@ serve(async (req) => {
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content || "";
 
-  // Extract JSON from response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   let parsed = {};
   try {

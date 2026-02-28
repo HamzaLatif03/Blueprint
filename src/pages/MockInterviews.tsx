@@ -37,6 +37,7 @@ const MockInterviews = () => {
   // Speech-to-text
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const committedTranscriptRef = useRef("");
 
   const startCamera = useCallback(async () => {
     try {
@@ -70,43 +71,61 @@ const MockInterviews = () => {
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-GB";
+    // Snapshot current answer as our committed base
+    committedTranscriptRef.current = answer;
 
-    recognition.onresult = (event: any) => {
-      let final = "";
-      let interim = "";
-      for (let i = 0; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          final += transcript + " ";
-        } else {
-          interim += transcript;
+    const startRecognition = () => {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-GB";
+
+      recognition.onresult = (event: any) => {
+        let final = "";
+        let interim = "";
+        for (let i = 0; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            final += transcript + " ";
+          } else {
+            interim += transcript;
+          }
         }
-      }
-      setAnswer((prev) => {
-        const base = prev.replace(/\s*\[…\]$/, "");
-        if (final.trim()) return (base ? base + " " : "") + final.trim();
-        if (interim) return (base ? base + " " : "") + "[…]";
-        return base;
-      });
+
+        if (final.trim()) {
+          // Commit finalized text permanently
+          committedTranscriptRef.current = (committedTranscriptRef.current ? committedTranscriptRef.current + " " : "") + final.trim();
+          setAnswer(committedTranscriptRef.current);
+        } else if (interim) {
+          setAnswer(committedTranscriptRef.current + (committedTranscriptRef.current ? " " : "") + "[…]");
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        if (e.error !== "aborted" && e.error !== "no-speech") {
+          recognitionRef.current = null;
+          setIsListening(false);
+        }
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if still supposed to be listening
+        if (recognitionRef.current === recognition) {
+          try {
+            const fresh = startRecognition();
+            recognitionRef.current = fresh;
+          } catch {
+            setIsListening(false);
+          }
+        }
+      };
+
+      recognition.start();
+      return recognition;
     };
 
-    recognition.onerror = (e: any) => {
-      if (e.error !== "aborted") setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      // Restart if still supposed to be listening (browser auto-stops)
-      if (recognitionRef.current === recognition) {
-        try { recognition.start(); } catch { setIsListening(false); }
-      }
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
+    const rec = startRecognition();
+    recognitionRef.current = rec;
     setIsListening(true);
     toast.success("🎙️ Listening... speak your answer!");
   }, [isListening, answer]);
@@ -115,6 +134,7 @@ const MockInterviews = () => {
     setLoadingQ(true);
     setFeedback(null);
     setAnswer("");
+    committedTranscriptRef.current = "";
     try {
       const { data } = await supabase.functions.invoke("interview-ai", {
         body: { action: "generate_question", role, industry },

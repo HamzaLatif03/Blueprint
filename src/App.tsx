@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import MockInterviews from "./pages/MockInterviews";
 import Postgrad from "./pages/Postgrad";
 import JobTracking from "./pages/JobTracking";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="/mock-interviews" element={<MockInterviews />} />
               <Route path="/postgrad" element={<Postgrad />} />
               <Route path="/job-tracking" element={<JobTracking />} />
+              <Route path="/profile" element={<Profile />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

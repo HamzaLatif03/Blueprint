@@ -14,11 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      education: {
+        Row: {
+          created_at: string
+          degree: string | null
+          end_date: string | null
+          field_of_study: string | null
+          id: string
+          start_date: string | null
+          university: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          degree?: string | null
+          end_date?: string | null
+          field_of_study?: string | null
+          id?: string
+          start_date?: string | null
+          university: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          degree?: string | null
+          end_date?: string | null
+          field_of_study?: string | null
+          id?: string
+          start_date?: string | null
+          university?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           bio: string | null
           created_at: string
+          cv_url: string | null
           display_name: string | null
           id: string
           updated_at: string
@@ -28,6 +62,7 @@ export type Database = {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
+          cv_url?: string | null
           display_name?: string | null
           id?: string
           updated_at?: string
@@ -37,9 +72,43 @@ export type Database = {
           avatar_url?: string | null
           bio?: string | null
           created_at?: string
+          cv_url?: string | null
           display_name?: string | null
           id?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      work_experience: {
+        Row: {
+          company: string
+          created_at: string
+          description: string | null
+          end_date: string | null
+          id: string
+          role: string | null
+          start_date: string | null
+          user_id: string
+        }
+        Insert: {
+          company: string
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          role?: string | null
+          start_date?: string | null
+          user_id: string
+        }
+        Update: {
+          company?: string
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          role?: string | null
+          start_date?: string | null
           user_id?: string
         }
         Relationships: []

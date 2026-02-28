@@ -29,6 +29,7 @@ const MockInterviews = () => {
   const [questionCount, setQuestionCount] = useState(0);
   const [sessionXP, setSessionXP] = useState(0);
   const [cameraOn, setCameraOn] = useState(true);
+  const [previousQuestions, setPreviousQuestions] = useState<string[]>([]);
 
   // Webcam
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -139,8 +140,11 @@ const MockInterviews = () => {
     committedTranscriptRef.current = "";
     try {
       const { data } = await supabase.functions.invoke("interview-ai", {
-        body: { action: "generate_question", role, industry },
+        body: { action: "generate_question", role, industry, previous_questions: previousQuestions },
       });
+      if (data?.question) {
+        setPreviousQuestions((prev) => [...prev, data.question]);
+      }
       setQuestion(data);
       setQuestionCount((c) => c + 1);
     } catch { setQuestion({ question: "Tell me about a challenge you overcame.", question_type: "behavioral" }); }
@@ -203,6 +207,7 @@ const MockInterviews = () => {
     setFeedback(null);
     setQuestionCount(0);
     setSessionXP(0);
+    setPreviousQuestions([]);
   };
 
   useEffect(() => {

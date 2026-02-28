@@ -1,5 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ProfileDropdown } from "@/components/ProfileDropdown";
@@ -31,12 +31,12 @@ export function AppLayout() {
           <header className="h-14 flex items-center justify-between border-b border-border/50 px-4 glass">
             <div className="flex items-center gap-3">
               <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
-              <div className="flex items-center gap-2">
+              <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.5 }} className="p-1 rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-foreground">
                   <Sparkles className="h-4 w-4" />
                 </motion.div>
                 <span className="text-lg font-extrabold gradient-text">Blueprint</span>
-              </div>
+              </Link>
             </div>
             <ProfileDropdown />
           </header>

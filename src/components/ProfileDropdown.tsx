@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -10,11 +11,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Trophy } from "lucide-react";
 import { useGamification, getBezelForLevel } from "@/hooks/useGamification";
+import { supabase } from "@/integrations/supabase/client";
+import { getAvatarByKey } from "@/components/AvatarSelector";
 
 export function ProfileDropdown() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const { level, total_xp, bezel } = useGamification();
+  const [avatarKey, setAvatarKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      supabase.from("profiles").select("avatar_url").eq("user_id", user.id).single().then(({ data }) => {
+        if (data) setAvatarKey((data as any).avatar_url);
+      });
+    }
+  }, [user]);
+
+  const avatar = getAvatarByKey(avatarKey);
 
   const initials = user?.user_metadata?.display_name
     ? user.user_metadata.display_name
@@ -31,8 +45,8 @@ export function ProfileDropdown() {
         <button className="flex items-center gap-2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <div className="relative">
             <Avatar className={`h-9 w-9 cursor-pointer border-[2.5px] ${bezel.color} transition-all`}>
-              <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
-                {initials}
+              <AvatarFallback className="bg-primary text-primary-foreground text-lg">
+                {avatar.emoji}
               </AvatarFallback>
             </Avatar>
             <span className="absolute -bottom-1 -right-1 text-xs bg-card rounded-full px-1 border border-border font-black text-[10px] leading-tight">

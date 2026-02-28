@@ -271,11 +271,19 @@ const JobTracking = () => {
         </motion.div>
       ) : (
         <motion.div className="space-y-3">
-          <AnimatePresence>
-            {filteredApps.map((app, i) => {
+          <AnimatePresence mode="popLayout">
+            {filteredApps.map((app) => {
               const cfg = statusConfig[app.status] || statusConfig.applied;
               return (
-                <motion.div key={app.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }} transition={{ duration: 0.25, layout: { duration: 0.3, ease: "easeInOut" } }} layout>
+                <motion.div
+                  key={app.id}
+                  layout
+                  initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, height: "auto", scale: 1 }}
+                  exit={{ opacity: 0, height: 0, scale: 0.95, transition: { opacity: { duration: 0.15 }, height: { duration: 0.25, delay: 0.1 }, scale: { duration: 0.15 } } }}
+                  transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1], layout: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } }}
+                  style={{ overflow: "hidden" }}
+                >
                   <motion.div whileHover={{ x: 4 }}>
                     <Card className="card-glow card-glow-hover hover:border-secondary/30 transition-all group overflow-hidden relative">
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${app.status === "offered" || app.status === "accepted" ? "bg-accent" : app.status === "interviewing" ? "bg-primary" : app.status === "rejected" ? "bg-destructive" : "bg-secondary"}`} />

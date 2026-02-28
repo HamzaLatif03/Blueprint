@@ -26,6 +26,12 @@ export function ProfileDropdown() {
         if (data) setAvatarKey((data as any).avatar_url);
       });
     }
+
+    const handler = (e: Event) => {
+      setAvatarKey((e as CustomEvent).detail);
+    };
+    window.addEventListener("avatar-changed", handler);
+    return () => window.removeEventListener("avatar-changed", handler);
   }, [user]);
 
   const avatar = getAvatarByKey(avatarKey);

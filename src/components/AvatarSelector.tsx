@@ -49,6 +49,8 @@ export function AvatarSelector({ selectedAvatar, onSelect }: AvatarSelectorProps
     onSelect(avatar.key);
     if (user) {
       await supabase.from("profiles").update({ avatar_url: avatar.key } as any).eq("user_id", user.id);
+      // Notify other components (e.g. ProfileDropdown) of the change
+      window.dispatchEvent(new CustomEvent("avatar-changed", { detail: avatar.key }));
       toast.success(`${avatar.emoji} Avatar changed to ${avatar.name}!`);
     }
   };

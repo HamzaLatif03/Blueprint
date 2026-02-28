@@ -275,7 +275,7 @@ const JobTracking = () => {
             {filteredApps.map((app, i) => {
               const cfg = statusConfig[app.status] || statusConfig.applied;
               return (
-                <motion.div key={app.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ delay: i * 0.04 }} layout>
+                <motion.div key={app.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }} transition={{ duration: 0.25, layout: { duration: 0.3, ease: "easeInOut" } }} layout>
                   <motion.div whileHover={{ x: 4 }}>
                     <Card className="card-glow card-glow-hover hover:border-secondary/30 transition-all group overflow-hidden relative">
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${app.status === "offered" || app.status === "accepted" ? "bg-accent" : app.status === "interviewing" ? "bg-primary" : app.status === "rejected" ? "bg-destructive" : "bg-secondary"}`} />
@@ -349,6 +349,12 @@ const JobTracking = () => {
                 <p className="text-muted-foreground font-medium">Click "Get Recommendations" to see personalised job suggestions based on your profile.</p>
                 <p className="text-xs text-muted-foreground mt-1">Tip: Fill out your profile with education & experience for better matches!</p>
               </div>
+            ) : recommendations.filter((job) => !apps.some((a) => a.company.toLowerCase() === job.company.toLowerCase() && a.role.toLowerCase() === job.role.toLowerCase())).length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-12 w-12 text-accent/30 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">You've applied to all recommended jobs! 🎉</p>
+                <p className="text-xs text-muted-foreground mt-1">Hit "Refresh" to get new recommendations.</p>
+              </div>
             ) : (
               <div className="relative">
                 {/* Scroll arrows */}
@@ -360,8 +366,7 @@ const JobTracking = () => {
                 </button>
 
                 <div ref={scrollContainerRef} className="flex gap-4 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                  {recommendations.map((job, i) => {
-                    const isTracked = apps.some((a) => a.company.toLowerCase() === job.company.toLowerCase() && a.role.toLowerCase() === job.role.toLowerCase());
+                  {recommendations.filter((job) => !apps.some((a) => a.company.toLowerCase() === job.company.toLowerCase() && a.role.toLowerCase() === job.role.toLowerCase())).map((job, i) => {
                     return (
                       <motion.div
                         key={i}
@@ -418,17 +423,11 @@ const JobTracking = () => {
 
                             {/* Actions */}
                             <div className="flex gap-2 mt-auto pt-2">
-                              {isTracked ? (
-                                <Button variant="outline" size="sm" className="flex-1 h-9 text-xs font-bold gap-1.5 text-accent border-accent/30" disabled>
-                                  <CheckCircle className="h-3.5 w-3.5" /> Applied
+                              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1">
+                                <Button size="sm" className="w-full h-9 text-xs font-bold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => addFromRecommendation(job)}>
+                                  <Plus className="h-3.5 w-3.5" /> Applied +15 XP
                                 </Button>
-                              ) : (
-                                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1">
-                                  <Button size="sm" className="w-full h-9 text-xs font-bold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => addFromRecommendation(job)}>
-                                    <Plus className="h-3.5 w-3.5" /> Applied +15 XP
-                                  </Button>
-                                </motion.div>
-                              )}
+                              </motion.div>
                               <a href={job.url} target="_blank" rel="noopener noreferrer">
                                 <Button variant="outline" size="sm" className="h-9 text-xs font-bold gap-1">
                                   <ExternalLink className="h-3.5 w-3.5" />

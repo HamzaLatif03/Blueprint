@@ -29,23 +29,26 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 2000,
+        max_tokens: 3000,
         messages: [{
           role: "user",
-          content: `Based on this student/graduate profile, recommend 6-8 specific real job/internship openings they should apply for RIGHT NOW. Focus on well-known companies and real programme types.
+          content: `Based on this student/graduate profile, recommend 8-10 specific real job/internship openings they should apply for RIGHT NOW. Focus on well-known companies and real programme types.
 
 Profile:
 ${profileSummary || "No profile data provided - suggest popular graduate programmes across finance, tech, and consulting."}
 
 Return ONLY valid JSON array, no markdown. Each object must have:
 - "company": company name (string)
-- "role": specific role/programme title (string)
+- "role": specific role/programme title (string)  
+- "level": one of "Internship", "Graduate", "Junior", "Mid-Level", "Senior" (string)
+- "location": city or "Remote" (string)
+- "salary": estimated salary range e.g. "£25,000 - £35,000" or "Competitive" (string)
+- "logo_url": use "https://logo.clearbit.com/{company domain}" for the company logo e.g. "https://logo.clearbit.com/google.com" (string)
 - "url": real application URL - use the actual careers page URL for that company's graduate/internship programme (string)
 - "match_reason": one sentence why this is a good fit (string)
 - "category": one of "Finance", "Technology", "Consulting", "Law", "Other" (string)
-- "deadline_hint": approximate deadline or "Rolling" (string)
 
-Return real companies with real career page URLs. Prefer companies actively hiring graduates/interns.`
+Return real companies with real career page URLs. Prefer companies actively hiring graduates/interns. Make sure logo_url uses the correct company domain.`
         }],
       }),
     });

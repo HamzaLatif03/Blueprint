@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter, Sparkles, RefreshCw } from "lucide-react";
+import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter, Sparkles, RefreshCw, MapPin, DollarSign, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,7 @@ const categoryColors: Record<string, string> = {
 };
 
 type JobApp = { id: string; company: string; role: string; status: string; applied_date: string; notes: string | null; url: string | null };
-type RecommendedJob = { company: string; role: string; url: string; match_reason: string; category: string; deadline_hint: string };
+type RecommendedJob = { company: string; role: string; url: string; match_reason: string; category: string; deadline_hint?: string; level: string; location: string; salary: string; logo_url: string };
 
 const JobTracking = () => {
   const { user } = useAuth();
@@ -106,9 +106,29 @@ const JobTracking = () => {
     }
   };
 
-  const addFromRecommendation = (job: RecommendedJob) => {
-    setForm({ company: job.company, role: job.role, status: "applied", url: job.url, notes: job.match_reason });
-    setDialogOpen(true);
+  const addFromRecommendation = async (job: RecommendedJob) => {
+    if (!user) return;
+    const tempId = crypto.randomUUID();
+    const newApp: JobApp = { id: tempId, company: job.company, role: job.role, status: "applied", applied_date: new Date().toISOString(), notes: job.match_reason, url: job.url };
+    setApps((prev) => [newApp, ...prev]);
+    toast.success(`📨 Applied to ${job.role} at ${job.company}!`);
+
+    const { error } = await supabase.from("job_applications").insert({ company: job.company, role: job.role, status: "applied", url: job.url, notes: job.match_reason, user_id: user.id } as any);
+    if (error) {
+      toast.error("Failed to save — reverting");
+      setApps((prev) => prev.filter((a) => a.id !== tempId));
+    } else {
+      fetchApps();
+      await awardXP(15, "Applied via Recommendation", `${job.role} at ${job.company}`);
+      const count = apps.length + 1;
+      if (count === 1) await unlockAchievement("first_application");
+      if (count >= 5) await unlockAchievement("five_applications");
+    }
+  };
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollBy = (dir: number) => {
+    scrollContainerRef.current?.scrollBy({ left: dir * 320, behavior: "smooth" });
   };
 
   const updateStatus = async (id: string, status: string) => {
@@ -302,7 +322,7 @@ const JobTracking = () => {
         </motion.div>
       )}
 
-      {/* Recommended Jobs Section */}
+      {/* Recommended Jobs Carousel */}
       <motion.div variants={fadeUp} className="mt-10">
         <Card className="card-glow overflow-hidden relative">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
@@ -330,38 +350,97 @@ const JobTracking = () => {
                 <p className="text-xs text-muted-foreground mt-1">Tip: Fill out your profile with education & experience for better matches!</p>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {recommendations.map((job, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
-                    <Card className="card-glow card-glow-hover hover:border-primary/30 transition-all h-full">
-                      <CardContent className="py-4 flex flex-col gap-2 h-full">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h4 className="font-bold text-foreground leading-tight">{job.role}</h4>
-                            <p className="text-sm font-semibold text-muted-foreground">{job.company}</p>
-                          </div>
-                          <Badge variant="outline" className={`text-[10px] shrink-0 ${categoryColors[job.category] || categoryColors.Other}`}>
-                            {job.category}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground flex-1">{job.match_reason}</p>
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-[10px] text-muted-foreground font-medium">⏰ {job.deadline_hint}</span>
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm" className="h-7 text-xs font-bold text-primary hover:text-primary/80" onClick={() => addFromRecommendation(job)}>
-                              <Plus className="h-3 w-3 mr-1" /> Track
-                            </Button>
-                            <a href={job.url} target="_blank" rel="noopener noreferrer">
-                              <Button variant="ghost" size="sm" className="h-7 text-xs font-bold text-secondary hover:text-secondary/80">
-                                Apply <ExternalLink className="h-3 w-3 ml-1" />
-                              </Button>
-                            </a>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+              <div className="relative">
+                {/* Scroll arrows */}
+                <button onClick={() => scrollBy(-1)} className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 z-10 h-8 w-8 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors">
+                  <ChevronLeft className="h-4 w-4 text-foreground" />
+                </button>
+                <button onClick={() => scrollBy(1)} className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 z-10 h-8 w-8 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors">
+                  <ChevronRight className="h-4 w-4 text-foreground" />
+                </button>
+
+                <div ref={scrollContainerRef} className="flex gap-4 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                  {recommendations.map((job, i) => {
+                    const isTracked = apps.some((a) => a.company.toLowerCase() === job.company.toLowerCase() && a.role.toLowerCase() === job.role.toLowerCase());
+                    return (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: i * 0.06 }}
+                        className="snap-start shrink-0 w-[280px]"
+                      >
+                        <Card className="card-glow card-glow-hover hover:border-primary/30 transition-all h-full flex flex-col overflow-hidden">
+                          <div className={`h-1 bg-gradient-to-r ${
+                            job.category === "Technology" ? "from-primary to-primary/60" :
+                            job.category === "Finance" ? "from-secondary to-secondary/60" :
+                            job.category === "Consulting" ? "from-accent to-accent/60" :
+                            "from-muted-foreground/30 to-muted-foreground/10"
+                          }`} />
+                          <CardContent className="py-4 flex flex-col gap-3 flex-1">
+                            {/* Company Header */}
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={job.logo_url}
+                                alt={job.company}
+                                className="h-10 w-10 rounded-lg object-contain bg-muted p-1 border border-border"
+                                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(job.company)}&background=random&size=40`; }}
+                              />
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-foreground text-sm leading-tight truncate">{job.company}</h4>
+                                <Badge variant="outline" className={`text-[9px] mt-0.5 ${categoryColors[job.category] || categoryColors.Other}`}>
+                                  {job.category}
+                                </Badge>
+                              </div>
+                            </div>
+
+                            {/* Role */}
+                            <h3 className="font-extrabold text-foreground leading-snug text-[15px]">{job.role}</h3>
+
+                            {/* Details */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                                <span className="font-semibold">{job.level}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                                <span>{job.location}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                                <span className="font-semibold">{job.salary}</span>
+                              </div>
+                            </div>
+
+                            {/* Match reason */}
+                            <p className="text-[11px] text-muted-foreground flex-1 leading-relaxed">{job.match_reason}</p>
+
+                            {/* Actions */}
+                            <div className="flex gap-2 mt-auto pt-2">
+                              {isTracked ? (
+                                <Button variant="outline" size="sm" className="flex-1 h-9 text-xs font-bold gap-1.5 text-accent border-accent/30" disabled>
+                                  <CheckCircle className="h-3.5 w-3.5" /> Applied
+                                </Button>
+                              ) : (
+                                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1">
+                                  <Button size="sm" className="w-full h-9 text-xs font-bold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => addFromRecommendation(job)}>
+                                    <Plus className="h-3.5 w-3.5" /> Applied +15 XP
+                                  </Button>
+                                </motion.div>
+                              )}
+                              <a href={job.url} target="_blank" rel="noopener noreferrer">
+                                <Button variant="outline" size="sm" className="h-9 text-xs font-bold gap-1">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </Button>
+                              </a>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </CardContent>

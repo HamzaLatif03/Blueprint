@@ -3,9 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-// Level thresholds: level N requires (N-1)*100 XP total
-// e.g. Level 2 = 100XP, Level 3 = 300XP, Level 5 = 1000XP, Level 10 = 4500XP
-const XP_PER_LEVEL = (level: number) => level * 100;
+// Exponential leveling: each level requires more XP than the last
+// Level 2 = 100, Level 3 = 250, Level 5 = 700, Level 10 = 2500, Level 15 = 5500, Level 20 = 10000
+const XP_PER_LEVEL = (level: number) => Math.round(50 * Math.pow(level, 1.5));
 const levelFromXP = (xp: number): number => {
   let level = 1;
   let needed = 0;
@@ -87,6 +87,13 @@ export function useGamification() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Listen for cross-component XP updates (e.g. level-up refreshes the profile dropdown)
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener("xp-updated", handler);
+    return () => window.removeEventListener("xp-updated", handler);
+  }, [fetchData]);
+
   const awardXP = useCallback(async (amount: number, action: string, description?: string) => {
     if (!user || amount <= 0) return;
     
@@ -120,10 +127,11 @@ export function useGamification() {
       } as any),
     ]);
 
-    // Check level-up
+    // Check level-up and broadcast to other components
     if (newLevel > xpData.level) {
       const bezel = getBezelForLevel(newLevel);
       toast.success(`🎉 Level Up! You're now Level ${newLevel} — ${bezel.emoji} ${bezel.label}!`);
+      window.dispatchEvent(new CustomEvent("xp-updated"));
     }
 
     // Check level achievements

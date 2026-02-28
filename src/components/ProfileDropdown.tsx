@@ -14,6 +14,7 @@ import { useGamification, getBezelForLevel } from "@/hooks/useGamification";
 import { supabase } from "@/integrations/supabase/client";
 import { getAvatarByKey } from "@/components/AvatarSelector";
 
+// Profile dropdown with live gamification updates
 export function ProfileDropdown() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();

@@ -60,7 +60,7 @@ const Dashboard = () => {
               <motion.div 
                 whileHover={{ y: -8, scale: 1.02 }} 
                 whileTap={{ scale: 0.98 }}
-                className="relative rounded-2xl p-6 bg-card border border-border/50 hover:border-primary/30 transition-colors overflow-hidden card-glow card-glow-hover group cursor-pointer"
+                className="relative rounded-2xl p-6 h-full bg-card border border-border/50 hover:border-primary/30 transition-colors overflow-hidden card-glow card-glow-hover group cursor-pointer flex flex-col"
               >
                 <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${item.gradient}`} />
                 <div className="flex items-center justify-between mb-4">
@@ -74,7 +74,7 @@ const Dashboard = () => {
                 </div>
                 <h3 className="font-bold text-lg text-foreground">{item.title}</h3>
                 <p className="text-sm text-muted-foreground mt-1">{item.desc}</p>
-                <div className="mt-5 flex items-center gap-1 text-sm font-semibold text-primary group-hover:gap-2 transition-all">
+                <div className="mt-auto pt-5 flex items-center gap-1 text-sm font-semibold text-primary group-hover:gap-2 transition-all">
                   Let's go <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </div>
               </motion.div>

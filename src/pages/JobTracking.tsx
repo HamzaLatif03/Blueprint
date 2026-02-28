@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Briefcase, Plus, Trash2, ExternalLink, Loader2, X } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,14 +12,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-const fadeUp = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } };
+const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
+const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 
-const statusColors: Record<string, string> = {
-  applied: "bg-secondary/15 text-secondary border-secondary/30",
-  interviewing: "bg-primary/15 text-primary border-primary/30",
-  offered: "bg-accent/15 text-accent border-accent/30",
-  rejected: "bg-destructive/15 text-destructive border-destructive/30",
-  accepted: "bg-accent/20 text-accent border-accent/40",
+const statusConfig: Record<string, { bg: string; emoji: string; label: string }> = {
+  applied: { bg: "bg-secondary/10 text-secondary border-secondary/20", emoji: "📨", label: "Applied" },
+  interviewing: { bg: "bg-primary/10 text-primary border-primary/20", emoji: "🎤", label: "Interviewing" },
+  offered: { bg: "bg-accent/10 text-accent border-accent/20", emoji: "🎉", label: "Offered" },
+  accepted: { bg: "bg-accent/15 text-accent border-accent/30", emoji: "✅", label: "Accepted" },
+  rejected: { bg: "bg-destructive/10 text-destructive border-destructive/20", emoji: "❌", label: "Rejected" },
 };
 
 type JobApp = { id: string; company: string; role: string; status: string; applied_date: string; notes: string | null; url: string | null };
@@ -44,7 +45,7 @@ const JobTracking = () => {
     if (!form.company.trim() || !form.role.trim() || !user) return;
     const { error } = await supabase.from("job_applications").insert({ ...form, user_id: user.id } as any);
     if (error) { toast.error("Failed to add"); return; }
-    toast.success("Application added!");
+    toast.success("🎉 Application tracked!");
     setForm({ company: "", role: "", status: "applied", url: "", notes: "" });
     setDialogOpen(false);
     fetchApps();
@@ -52,6 +53,8 @@ const JobTracking = () => {
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from("job_applications").update({ status } as any).eq("id", id);
+    const emoji = statusConfig[status]?.emoji || "";
+    toast.success(`${emoji} Status updated!`);
     fetchApps();
   };
 
@@ -61,89 +64,144 @@ const JobTracking = () => {
     fetchApps();
   };
 
+  const stats = {
+    total: apps.length,
+    interviewing: apps.filter((a) => a.status === "interviewing").length,
+    offered: apps.filter((a) => a.status === "offered" || a.status === "accepted").length,
+  };
+
   return (
-    <motion.div className="max-w-5xl mx-auto" initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.1 } } }}>
+    <motion.div className="max-w-5xl mx-auto" initial="hidden" animate="visible" variants={stagger}>
       <motion.div variants={fadeUp} className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-secondary/10"><Briefcase className="h-7 w-7 text-secondary" /></div>
+          <h1 className="text-3xl font-extrabold flex items-center gap-3">
+            <motion.div whileHover={{ rotate: 15 }} className="p-2.5 rounded-xl bg-gradient-to-br from-secondary to-secondary/60 text-secondary-foreground">
+              <Briefcase className="h-6 w-6" />
+            </motion.div>
             Job Tracking
+            <span className="text-2xl">💼</span>
           </h1>
           <p className="mt-2 text-muted-foreground">Track all your applications in one place.</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 bg-secondary hover:bg-secondary/90 text-secondary-foreground" size="lg">
-              <Plus className="h-4 w-4" /> Add Application
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button className="gap-2 bg-secondary hover:bg-secondary/90 text-secondary-foreground h-11 font-bold" size="lg">
+                <Plus className="h-5 w-5" /> Add Application
+              </Button>
+            </motion.div>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>New Application</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="text-xl">🆕 New Application</DialogTitle></DialogHeader>
             <div className="space-y-4 mt-2">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label>Company *</Label><Input placeholder="e.g. Google" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Role *</Label><Input placeholder="e.g. SWE Intern" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} /></div>
+                <div className="space-y-2"><Label className="font-semibold">Company *</Label><Input placeholder="e.g. Google" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="h-11" /></div>
+                <div className="space-y-2"><Label className="font-semibold">Role *</Label><Input placeholder="e.g. SWE Intern" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="h-11" /></div>
               </div>
-              <div className="space-y-2"><Label>Link (optional)</Label><Input placeholder="https://..." value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>
-              <div className="space-y-2"><Label>Notes</Label><Input placeholder="Any notes..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-              <Button onClick={addApp} disabled={!form.company.trim() || !form.role.trim()} className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground">Add Application</Button>
+              <div className="space-y-2"><Label className="font-semibold">Link (optional)</Label><Input placeholder="https://..." value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>
+              <div className="space-y-2"><Label className="font-semibold">Notes</Label><Input placeholder="Any notes..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button onClick={addApp} disabled={!form.company.trim() || !form.role.trim()} className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold h-11">
+                  Track It! 🚀
+                </Button>
+              </motion.div>
             </div>
           </DialogContent>
         </Dialog>
       </motion.div>
 
+      {/* Stats */}
+      {apps.length > 0 && (
+        <motion.div variants={fadeUp} className="grid grid-cols-3 gap-3 mb-6">
+          {[
+            { label: "Total", value: stats.total, icon: <Briefcase className="h-4 w-4" />, color: "text-secondary" },
+            { label: "Interviewing", value: stats.interviewing, icon: <Zap className="h-4 w-4" />, color: "text-primary" },
+            { label: "Offers", value: stats.offered, icon: <Trophy className="h-4 w-4" />, color: "text-accent" },
+          ].map((stat) => (
+            <Card key={stat.label} className="card-glow">
+              <CardContent className="py-4 flex items-center gap-3">
+                <div className={stat.color}>{stat.icon}</div>
+                <div>
+                  <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                  <p className="text-xs text-muted-foreground font-medium">{stat.label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </motion.div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-secondary" /></div>
       ) : apps.length === 0 ? (
         <motion.div variants={fadeUp}>
-          <Card className="border-2 border-dashed border-secondary/20">
-            <CardContent className="py-12 text-center">
-              <Briefcase className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground">No applications yet. Start tracking your first one!</p>
+          <Card className="card-glow border-2 border-dashed border-secondary/20">
+            <CardContent className="py-14 text-center">
+              <motion.div animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity }}>
+                <Briefcase className="h-16 w-16 text-muted-foreground/20 mx-auto mb-4" />
+              </motion.div>
+              <p className="text-lg font-semibold text-muted-foreground mb-1">No applications yet</p>
+              <p className="text-sm text-muted-foreground">Start tracking your first one! 🚀</p>
             </CardContent>
           </Card>
         </motion.div>
       ) : (
         <motion.div className="space-y-3">
-          {apps.map((app, i) => (
-            <motion.div key={app.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} layout>
-              <Card className="hover:shadow-md transition-all group">
-                <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-foreground">{app.role}</h3>
-                      <span className="text-muted-foreground">at</span>
-                      <span className="font-medium text-foreground">{app.company}</span>
-                      {app.url && (
-                        <a href={app.url} target="_blank" rel="noopener noreferrer" className="text-secondary hover:text-secondary/80">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </div>
-                    {app.notes && <p className="text-sm text-muted-foreground mt-1 truncate">{app.notes}</p>}
-                    <p className="text-xs text-muted-foreground mt-1">{app.applied_date ? new Date(app.applied_date).toLocaleDateString() : ""}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select value={app.status} onValueChange={(v) => updateStatus(app.id, v)}>
-                      <SelectTrigger className={`w-36 text-xs font-medium border ${statusColors[app.status] || ""}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="applied">Applied</SelectItem>
-                        <SelectItem value="interviewing">Interviewing</SelectItem>
-                        <SelectItem value="offered">Offered</SelectItem>
-                        <SelectItem value="accepted">Accepted</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => deleteApp(app.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+          <AnimatePresence>
+            {apps.map((app, i) => {
+              const cfg = statusConfig[app.status] || statusConfig.applied;
+              return (
+                <motion.div 
+                  key={app.id} 
+                  initial={{ opacity: 0, x: -20 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ delay: i * 0.04 }} 
+                  layout
+                >
+                  <motion.div whileHover={{ x: 4 }}>
+                    <Card className="card-glow card-glow-hover hover:border-secondary/30 transition-all group overflow-hidden relative">
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${app.status === "offered" || app.status === "accepted" ? "bg-accent" : app.status === "interviewing" ? "bg-primary" : app.status === "rejected" ? "bg-destructive" : "bg-secondary"}`} />
+                      <CardContent className="py-4 pl-5 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span className="text-xl">{cfg.emoji}</span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-foreground">{app.role}</h3>
+                              <span className="text-muted-foreground text-sm">@</span>
+                              <span className="font-semibold text-foreground">{app.company}</span>
+                              {app.url && (
+                                <a href={app.url} target="_blank" rel="noopener noreferrer" className="text-secondary hover:text-secondary/80 transition-colors">
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+                            </div>
+                            {app.notes && <p className="text-sm text-muted-foreground mt-0.5 truncate max-w-md">{app.notes}</p>}
+                            <p className="text-xs text-muted-foreground mt-1">{app.applied_date ? new Date(app.applied_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : ""}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select value={app.status} onValueChange={(v) => updateStatus(app.id, v)}>
+                            <SelectTrigger className={`w-40 text-xs font-bold border rounded-lg ${cfg.bg}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(statusConfig).map(([key, val]) => (
+                                <SelectItem key={key} value={key}>{val.emoji} {val.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all" onClick={() => deleteApp(app.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </motion.div>
       )}
     </motion.div>

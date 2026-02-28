@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { supabase } from "@/integrations/supabase/client";
+import { useGamification } from "@/hooks/useGamification";
+import { XPPopup } from "@/components/XPPopup";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -18,6 +20,7 @@ const matchColor = (pct: number) => pct >= 85 ? "text-accent" : pct >= 70 ? "tex
 const matchEmoji = (pct: number) => pct >= 90 ? "🔥" : pct >= 80 ? "⭐" : pct >= 70 ? "👍" : "📝";
 
 const Postgrad = () => {
+  const { awardXP, unlockAchievement, xpPopup } = useGamification();
   const [degreeType, setDegreeType] = useState("both");
   const [interests, setInterests] = useState("");
   const [background, setBackground] = useState("");
@@ -34,6 +37,8 @@ const Postgrad = () => {
         body: { interests, background, degree_type: degreeType },
       });
       setResults(data?.programmes || []);
+      await awardXP(15, "Postgrad Search", `Searched for ${degreeType} programmes`);
+      await unlockAchievement("postgrad_explorer");
     } catch {
       setResults([]);
     }
@@ -42,6 +47,7 @@ const Postgrad = () => {
 
   return (
     <motion.div className="max-w-5xl mx-auto" initial="hidden" animate="visible" variants={stagger}>
+      <XPPopup xpPopup={xpPopup} />
       <motion.div variants={fadeUp} className="mb-8">
         <h1 className="text-3xl font-extrabold flex items-center gap-3">
           <motion.div whileHover={{ rotate: 15 }} className="p-2.5 rounded-xl bg-gradient-to-br from-accent to-accent/60 text-accent-foreground">

@@ -9,7 +9,7 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const { action, role, industry, question, answer } = await req.json();
+  const { action, role, industry, question, answer, previous_questions } = await req.json();
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -19,8 +19,9 @@ serve(async (req) => {
   let userPrompt = "";
 
   if (action === "generate_question") {
-    systemPrompt = "You are an expert interviewer. Generate exactly one interview question. Reply with JSON only: {\"question\": \"...\", \"question_type\": \"behavioral|technical|situational\"}";
-    userPrompt = `Generate an interview question for role: "${role || "general"}", industry: "${industry || "general"}". Make it specific and challenging.`;
+    systemPrompt = "You are an expert interviewer. Generate exactly one interview question. You MUST NOT repeat or rephrase any previously asked questions. Reply with JSON only: {\"question\": \"...\", \"question_type\": \"behavioral|technical|situational\"}";
+    const prevList = previous_questions?.length ? `\n\nDo NOT repeat or closely rephrase any of these previously asked questions:\n${previous_questions.map((q: string, i: number) => `${i + 1}. ${q}`).join("\n")}` : "";
+    userPrompt = `Generate an interview question for role: "${role || "general"}", industry: "${industry || "general"}". Make it specific and challenging.${prevList}`;
   } else if (action === "get_feedback") {
     systemPrompt = `You are a supportive and encouraging interview coach. Evaluate the candidate's answer generously — focus on what they did well and give constructive suggestions. Be kind but honest. Scores should reflect genuine effort: a reasonable attempt should score 6-7, a good answer 7-8, and only truly poor answers below 5. Most answers from someone genuinely trying should land between 6-9. Reply with JSON only: {"score": 1-10, "feedback": "...", "strengths": ["..."], "improvements": ["..."]}`;
     userPrompt = `Question: "${question}"\nAnswer: "${answer}"\nRole: "${role || "general"}"\n\nRate this answer generously and provide encouraging, actionable feedback.`;

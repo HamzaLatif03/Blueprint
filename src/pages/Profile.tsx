@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Upload, FileText, Loader2, User, GraduationCap, Briefcase, Sparkles, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { AvatarSelector } from "@/components/AvatarSelector";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -39,6 +40,7 @@ const Profile = () => {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [cvUrl, setCvUrl] = useState<string | null>(null);
+  const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [cvFileName, setCvFileName] = useState<string | null>(null);
   const [education, setEducation] = useState<Education[]>([]);
   const [workExperience, setWorkExperience] = useState<WorkExperience[]>([]);
@@ -62,6 +64,7 @@ const Profile = () => {
       setDisplayName(profileRes.data.display_name || "");
       setBio(profileRes.data.bio || "");
       setCvUrl((profileRes.data as any).cv_url || null);
+      setSelectedAvatar((profileRes.data as any).avatar_url || null);
     }
     if (eduRes.data) setEducation(eduRes.data as any[]);
     if (workRes.data) setWorkExperience(workRes.data as any[]);
@@ -154,6 +157,11 @@ const Profile = () => {
           <span className="text-2xl">👤</span>
         </h1>
         <p className="mt-2 text-muted-foreground">Your info is saved and used across all Blueprint features.</p>
+      </motion.div>
+
+      {/* Avatar Selector */}
+      <motion.div variants={fadeUp}>
+        <AvatarSelector selectedAvatar={selectedAvatar} onSelect={setSelectedAvatar} />
       </motion.div>
 
       {/* Basic Info */}

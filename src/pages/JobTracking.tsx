@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter, Sparkles, RefreshCw } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,16 @@ const statusConfig: Record<string, { bg: string; emoji: string; label: string }>
   rejected: { bg: "bg-destructive/10 text-destructive border-destructive/20", emoji: "❌", label: "Rejected" },
 };
 
+const categoryColors: Record<string, string> = {
+  Finance: "bg-secondary/10 text-secondary border-secondary/20",
+  Technology: "bg-primary/10 text-primary border-primary/20",
+  Consulting: "bg-accent/10 text-accent border-accent/20",
+  Law: "bg-muted text-muted-foreground border-border",
+  Other: "bg-muted text-muted-foreground border-border",
+};
+
 type JobApp = { id: string; company: string; role: string; status: string; applied_date: string; notes: string | null; url: string | null };
+type RecommendedJob = { company: string; role: string; url: string; match_reason: string; category: string; deadline_hint: string };
 
 const JobTracking = () => {
   const { user } = useAuth();
@@ -33,6 +42,8 @@ const JobTracking = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ company: "", role: "", status: "applied", url: "", notes: "" });
   const [statusFilter, setStatusFilter] = useState("all");
+  const [recommendations, setRecommendations] = useState<RecommendedJob[]>([]);
+  const [recsLoading, setRecsLoading] = useState(false);
 
   const fetchApps = async () => {
     if (!user) return;
@@ -41,11 +52,37 @@ const JobTracking = () => {
     setLoading(false);
   };
 
+  const fetchRecommendations = async () => {
+    if (!user) return;
+    setRecsLoading(true);
+    try {
+      const [eduRes, workRes, profileRes] = await Promise.all([
+        supabase.from("education" as any).select("*").eq("user_id", user.id),
+        supabase.from("work_experience" as any).select("*").eq("user_id", user.id),
+        supabase.from("profiles").select("bio").eq("user_id", user.id).single(),
+      ]);
+
+      const { data, error } = await supabase.functions.invoke("recommended-jobs", {
+        body: {
+          education: eduRes.data || [],
+          work_experience: workRes.data || [],
+          bio: profileRes.data?.bio || "",
+        },
+      });
+
+      if (error) throw error;
+      setRecommendations(data.jobs || []);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load recommendations");
+    }
+    setRecsLoading(false);
+  };
+
   useEffect(() => { fetchApps(); }, [user]);
 
   const addApp = async () => {
     if (!form.company.trim() || !form.role.trim() || !user) return;
-    // Optimistic add
     const tempId = crypto.randomUUID();
     const newApp: JobApp = { id: tempId, company: form.company, role: form.role, status: form.status, applied_date: new Date().toISOString(), notes: form.notes || null, url: form.url || null };
     setApps((prev) => [newApp, ...prev]);
@@ -58,13 +95,16 @@ const JobTracking = () => {
       toast.error("Failed to save — reverting");
       setApps((prev) => prev.filter((a) => a.id !== tempId));
     } else {
-      // Replace temp with real data
       fetchApps();
     }
   };
 
+  const addFromRecommendation = (job: RecommendedJob) => {
+    setForm({ company: job.company, role: job.role, status: "applied", url: job.url, notes: job.match_reason });
+    setDialogOpen(true);
+  };
+
   const updateStatus = async (id: string, status: string) => {
-    // Optimistic update
     setApps((prev) => prev.map((a) => a.id === id ? { ...a, status } : a));
     const emoji = statusConfig[status]?.emoji || "";
     toast.success(`${emoji} Status updated!`);
@@ -72,7 +112,6 @@ const JobTracking = () => {
   };
 
   const deleteApp = async (id: string) => {
-    // Optimistic delete
     const prev = apps;
     setApps((a) => a.filter((x) => x.id !== id));
     toast.success("Removed");
@@ -105,12 +144,7 @@ const JobTracking = () => {
             Job Tracking
             <span className="text-2xl">💼</span>
           </h1>
-          <p className="mt-2 text-muted-foreground">
-            Track all your applications in one place.{" "}
-            <a href="https://the-trackr.com/" target="_blank" rel="noopener noreferrer" className="text-secondary hover:underline font-medium inline-flex items-center gap-1">
-              Browse Trackr <ExternalLink className="h-3 w-3" />
-            </a>
-          </p>
+          <p className="mt-2 text-muted-foreground">Track all your applications in one place.</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -210,14 +244,7 @@ const JobTracking = () => {
             {filteredApps.map((app, i) => {
               const cfg = statusConfig[app.status] || statusConfig.applied;
               return (
-                <motion.div 
-                  key={app.id} 
-                  initial={{ opacity: 0, x: -20 }} 
-                  animate={{ opacity: 1, x: 0 }} 
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: i * 0.04 }} 
-                  layout
-                >
+                <motion.div key={app.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ delay: i * 0.04 }} layout>
                   <motion.div whileHover={{ x: 4 }}>
                     <Card className="card-glow card-glow-hover hover:border-secondary/30 transition-all group overflow-hidden relative">
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${app.status === "offered" || app.status === "accepted" ? "bg-accent" : app.status === "interviewing" ? "bg-primary" : app.status === "rejected" ? "bg-destructive" : "bg-secondary"}`} />
@@ -263,6 +290,72 @@ const JobTracking = () => {
           </AnimatePresence>
         </motion.div>
       )}
+
+      {/* Recommended Jobs Section */}
+      <motion.div variants={fadeUp} className="mt-10">
+        <Card className="card-glow overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-accent" />
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Sparkles className="h-5 w-5 text-primary" /> Recommended For You ✨
+            </CardTitle>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button variant="outline" size="sm" onClick={fetchRecommendations} disabled={recsLoading} className="gap-2 font-bold">
+                {recsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {recommendations.length === 0 ? "Get Recommendations" : "Refresh"}
+              </Button>
+            </motion.div>
+          </CardHeader>
+          <CardContent>
+            {recsLoading ? (
+              <div className="flex flex-col items-center py-10 gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground font-medium">Analysing your profile for the best matches...</p>
+              </div>
+            ) : recommendations.length === 0 ? (
+              <div className="text-center py-8">
+                <Sparkles className="h-12 w-12 text-muted-foreground/20 mx-auto mb-3" />
+                <p className="text-muted-foreground font-medium">Click "Get Recommendations" to see personalised job suggestions based on your profile.</p>
+                <p className="text-xs text-muted-foreground mt-1">Tip: Fill out your profile with education & experience for better matches!</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {recommendations.map((job, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
+                    <Card className="card-glow card-glow-hover hover:border-primary/30 transition-all h-full">
+                      <CardContent className="py-4 flex flex-col gap-2 h-full">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-foreground leading-tight">{job.role}</h4>
+                            <p className="text-sm font-semibold text-muted-foreground">{job.company}</p>
+                          </div>
+                          <Badge variant="outline" className={`text-[10px] shrink-0 ${categoryColors[job.category] || categoryColors.Other}`}>
+                            {job.category}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground flex-1">{job.match_reason}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] text-muted-foreground font-medium">⏰ {job.deadline_hint}</span>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="sm" className="h-7 text-xs font-bold text-primary hover:text-primary/80" onClick={() => addFromRecommendation(job)}>
+                              <Plus className="h-3 w-3 mr-1" /> Track
+                            </Button>
+                            <a href={job.url} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="sm" className="h-7 text-xs font-bold text-secondary hover:text-secondary/80">
+                                Apply <ExternalLink className="h-3 w-3 ml-1" />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
     </motion.div>
   );
 };

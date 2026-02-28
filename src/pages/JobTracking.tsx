@@ -12,6 +12,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { useGamification } from "@/hooks/useGamification";
+import { XPPopup } from "@/components/XPPopup";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -37,6 +39,7 @@ type RecommendedJob = { company: string; role: string; url: string; match_reason
 
 const JobTracking = () => {
   const { user } = useAuth();
+  const { awardXP, unlockAchievement, xpPopup } = useGamification();
   const [apps, setApps] = useState<JobApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -96,6 +99,10 @@ const JobTracking = () => {
       setApps((prev) => prev.filter((a) => a.id !== tempId));
     } else {
       fetchApps();
+      await awardXP(10, "Application Tracked", `${form.role} at ${form.company}`);
+      const count = apps.length + 1;
+      if (count === 1) await unlockAchievement("first_application");
+      if (count >= 5) await unlockAchievement("five_applications");
     }
   };
 
@@ -109,6 +116,9 @@ const JobTracking = () => {
     const emoji = statusConfig[status]?.emoji || "";
     toast.success(`${emoji} Status updated!`);
     await supabase.from("job_applications").update({ status } as any).eq("id", id);
+    if (status === "interviewing") await awardXP(15, "Interview Stage", "Moved to interviewing");
+    if (status === "offered") { await awardXP(25, "Offer Received! 🎉"); await unlockAchievement("first_offer"); }
+    if (status === "accepted") await awardXP(50, "Offer Accepted! 🎊");
   };
 
   const deleteApp = async (id: string) => {
@@ -135,6 +145,7 @@ const JobTracking = () => {
 
   return (
     <motion.div className="max-w-5xl mx-auto" initial="hidden" animate="visible" variants={stagger}>
+      <XPPopup xpPopup={xpPopup} />
       <motion.div variants={fadeUp} className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold flex items-center gap-3">

@@ -9,11 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useGamification } from "@/hooks/useGamification";
+import { XPPopup } from "@/components/XPPopup";
+import { XPBar } from "@/components/XPBar";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 
 const MockInterviews = () => {
+  const { awardXP, unlockAchievement, xpPopup } = useGamification();
   const [role, setRole] = useState("");
   const [industry, setIndustry] = useState("");
   const [started, setStarted] = useState(false);
@@ -23,7 +27,7 @@ const MockInterviews = () => {
   const [loadingQ, setLoadingQ] = useState(false);
   const [loadingF, setLoadingF] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
-  const [totalXP, setTotalXP] = useState(0);
+  const [sessionXP, setSessionXP] = useState(0);
 
   // Webcam
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -123,11 +127,16 @@ const MockInterviews = () => {
         body: { action: "get_feedback", question: question.question, answer, role },
       });
       setFeedback(data);
-      const xp = (data?.score || 5) * 10;
-      setTotalXP((t) => t + xp);
+      const xp = Math.max(10, (data?.score || 5) * 10);
+      setSessionXP((t) => t + xp);
+      await awardXP(xp, "Interview Practice", `Score: ${data?.score}/10 for ${role}`);
+      if (questionCount === 1) await unlockAchievement("first_interview_practice");
+      if (questionCount >= 10) await unlockAchievement("ten_interviews");
+      if (data?.score >= 10) await unlockAchievement("perfect_score");
     } catch { 
       setFeedback({ score: 7, feedback: "Good effort. Try adding more specifics.", strengths: ["Clear communication"], improvements: ["Add metrics"] }); 
-      setTotalXP((t) => t + 70);
+      setSessionXP((t) => t + 70);
+      await awardXP(70, "Interview Practice");
     }
     setLoadingF(false);
   };
@@ -149,7 +158,7 @@ const MockInterviews = () => {
     setQuestion(null);
     setFeedback(null);
     setQuestionCount(0);
-    setTotalXP(0);
+    setSessionXP(0);
   };
 
   useEffect(() => {
@@ -161,6 +170,7 @@ const MockInterviews = () => {
 
   return (
     <motion.div className="max-w-6xl mx-auto" initial="hidden" animate="visible" variants={stagger}>
+      <XPPopup xpPopup={xpPopup} />
       <motion.div variants={fadeUp} className="mb-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
@@ -177,7 +187,7 @@ const MockInterviews = () => {
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex gap-2">
               <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
                 <Zap className="h-4 w-4 text-[hsl(var(--xp-bar))]" />
-                {totalXP} XP
+                {sessionXP} XP
               </div>
               <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
                 <Trophy className="h-4 w-4 text-[hsl(var(--level))]" />
@@ -231,7 +241,7 @@ const MockInterviews = () => {
                     </Badge>
                   </motion.div>
                   <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-muted">
-                    <motion.div className="h-full xp-gradient rounded-r-full" animate={{ width: `${Math.min(100, totalXP / 5)}%` }} transition={{ duration: 0.5 }} />
+                    <motion.div className="h-full xp-gradient rounded-r-full" animate={{ width: `${Math.min(100, sessionXP / 5)}%` }} transition={{ duration: 0.5 }} />
                   </div>
                 </div>
               </Card>

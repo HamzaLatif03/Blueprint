@@ -8,11 +8,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Trophy } from "lucide-react";
+import { useGamification, getBezelForLevel } from "@/hooks/useGamification";
 
 export function ProfileDropdown() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { level, total_xp, bezel } = useGamification();
 
   const initials = user?.user_metadata?.display_name
     ? user.user_metadata.display_name
@@ -27,17 +29,27 @@ export function ProfileDropdown() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="flex items-center gap-2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Avatar className="h-9 w-9 cursor-pointer border-2 border-primary/20 hover:border-primary/50 transition-colors">
-            <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+          <div className="relative">
+            <Avatar className={`h-9 w-9 cursor-pointer border-[2.5px] ${bezel.color} transition-all`}>
+              <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <span className="absolute -bottom-1 -right-1 text-xs bg-card rounded-full px-1 border border-border font-black text-[10px] leading-tight">
+              {level}
+            </span>
+          </div>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <div className="px-2 py-1.5">
+      <DropdownMenuContent align="end" className="w-52">
+        <div className="px-3 py-2">
           <p className="text-sm font-medium">{user?.user_metadata?.display_name || "User"}</p>
           <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className="text-xs font-bold text-[hsl(var(--level))]">{bezel.emoji} Lv.{level} {bezel.label}</span>
+            <span className="text-[10px] text-muted-foreground">•</span>
+            <span className="text-xs font-bold text-[hsl(var(--xp-bar))]">{total_xp} XP</span>
+          </div>
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => navigate("/profile")}>

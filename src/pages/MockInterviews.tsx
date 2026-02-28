@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Send, Video, Star, Loader2, Sparkles, Trophy, Zap, ArrowRight, RotateCcw } from "lucide-react";
+import { Mic, MicOff, Send, Video, VideoOff, Star, Loader2, Sparkles, Trophy, Zap, ArrowRight, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ const MockInterviews = () => {
   const [loadingF, setLoadingF] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
   const [sessionXP, setSessionXP] = useState(0);
+  const [cameraOn, setCameraOn] = useState(true);
 
   // Webcam
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -63,7 +64,9 @@ const MockInterviews = () => {
 
     if (isListening) {
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
       setIsListening(false);
+      setAnswer((prev) => prev.replace(/\s*\[…\]$/, ""));
       return;
     }
 
@@ -72,27 +75,34 @@ const MockInterviews = () => {
     recognition.interimResults = true;
     recognition.lang = "en-GB";
 
-    let finalTranscript = answer;
-
     recognition.onresult = (event: any) => {
+      let final = "";
       let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += (finalTranscript ? " " : "") + transcript;
-          setAnswer(finalTranscript);
+          final += transcript + " ";
         } else {
           interim += transcript;
         }
       }
+      setAnswer((prev) => {
+        const base = prev.replace(/\s*\[…\]$/, "");
+        if (final.trim()) return (base ? base + " " : "") + final.trim();
+        if (interim) return (base ? base + " " : "") + "[…]";
+        return base;
+      });
     };
 
-    recognition.onerror = () => {
-      setIsListening(false);
+    recognition.onerror = (e: any) => {
+      if (e.error !== "aborted") setIsListening(false);
     };
 
     recognition.onend = () => {
-      setIsListening(false);
+      // Restart if still supposed to be listening (browser auto-stops)
+      if (recognitionRef.current === recognition) {
+        try { recognition.start(); } catch { setIsListening(false); }
+      }
     };
 
     recognitionRef.current = recognition;
@@ -119,6 +129,7 @@ const MockInterviews = () => {
     if (!answer.trim() || !question) return;
     if (isListening) {
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
       setIsListening(false);
     }
     setLoadingF(true);
@@ -144,14 +155,25 @@ const MockInterviews = () => {
   const startInterview = () => {
     if (!role.trim()) return;
     setStarted(true);
-    startCamera();
+    if (cameraOn) startCamera();
     generateQuestion();
   };
+
+  const toggleCamera = useCallback(() => {
+    if (cameraOn) {
+      stopCamera();
+      setCameraOn(false);
+    } else {
+      startCamera();
+      setCameraOn(true);
+    }
+  }, [cameraOn, startCamera, stopCamera]);
 
   const endInterview = () => {
     stopCamera();
     if (isListening) {
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
       setIsListening(false);
     }
     setStarted(false);
@@ -234,12 +256,26 @@ const MockInterviews = () => {
             <motion.div variants={fadeUp} className="lg:col-span-2 space-y-4">
               <Card className="overflow-hidden card-glow">
                 <div className="aspect-video bg-gradient-to-br from-muted via-muted/80 to-primary/5 relative overflow-hidden">
-                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0" />
-                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring" }}>
-                    <Badge className="absolute top-3 left-3 bg-destructive text-destructive-foreground text-xs gap-1 animate-pulse z-10">
-                      <span className="h-1.5 w-1.5 rounded-full bg-destructive-foreground" /> LIVE
-                    </Badge>
-                  </motion.div>
+                  {cameraOn && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover absolute inset-0" />}
+                  {!cameraOn && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <VideoOff className="h-10 w-10 text-muted-foreground/50" />
+                    </div>
+                  )}
+                  <div className="absolute top-3 left-3 flex gap-2 z-10">
+                    {cameraOn && (
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring" }}>
+                        <Badge className="bg-destructive text-destructive-foreground text-xs gap-1 animate-pulse">
+                          <span className="h-1.5 w-1.5 rounded-full bg-destructive-foreground" /> LIVE
+                        </Badge>
+                      </motion.div>
+                    )}
+                  </div>
+                  <div className="absolute top-3 right-3 z-10">
+                    <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full opacity-80 hover:opacity-100" onClick={toggleCamera}>
+                      {cameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                    </Button>
+                  </div>
                   <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-muted">
                     <motion.div className="h-full xp-gradient rounded-r-full" animate={{ width: `${Math.min(100, sessionXP / 5)}%` }} transition={{ duration: 0.5 }} />
                   </div>

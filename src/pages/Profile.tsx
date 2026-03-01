@@ -145,9 +145,18 @@ const Profile = () => {
     setParsing(false);
   };
 
-  const autoFillFromParsedData = (data: ParsedProfile) => {
-    if (data.name && !displayName) setDisplayName(data.name);
+  const autoFillFromParsedData = async (data: ParsedProfile) => {
+    if (!user) return;
+
+    // Update display name if empty
+    if (data.name && !displayName) {
+      setDisplayName(data.name);
+      await supabase.from("profiles").update({ display_name: data.name } as any).eq("user_id", user.id);
+    }
+
+    // Delete existing education & work, then insert parsed entries
     if (data.education?.length) {
+      await supabase.from("education" as any).delete().eq("user_id", user.id);
       const newEdu: Education[] = data.education.map((e) => ({
         university: e.university || "",
         degree: e.degree || "",
@@ -155,9 +164,28 @@ const Profile = () => {
         start_date: e.start_date || "",
         end_date: e.end_date || "",
       }));
-      setEducation(newEdu);
+      const rows = newEdu.filter((e) => e.university.trim()).map((e) => ({
+        user_id: user.id,
+        university: e.university.trim().slice(0, 200),
+        degree: e.degree.trim().slice(0, 200) || null,
+        field_of_study: e.field_of_study.trim().slice(0, 200) || null,
+        start_date: e.start_date || null,
+        end_date: e.end_date || null,
+      }));
+      if (rows.length) {
+        const { data: inserted } = await supabase.from("education" as any).insert(rows).select();
+        if (inserted) {
+          setEducation(inserted as any[]);
+        } else {
+          setEducation(newEdu);
+        }
+      } else {
+        setEducation(newEdu);
+      }
     }
+
     if (data.experience?.length) {
+      await supabase.from("work_experience" as any).delete().eq("user_id", user.id);
       const newWork: WorkExperience[] = data.experience.map((w) => ({
         company: w.company || "",
         role: w.role || "",
@@ -165,7 +193,24 @@ const Profile = () => {
         start_date: w.start_date || "",
         end_date: w.end_date || "",
       }));
-      setWorkExperience(newWork);
+      const rows = newWork.filter((w) => w.company.trim()).map((w) => ({
+        user_id: user.id,
+        company: w.company.trim().slice(0, 200),
+        role: w.role.trim().slice(0, 200) || null,
+        description: w.description.trim().slice(0, 1000) || null,
+        start_date: w.start_date || null,
+        end_date: w.end_date || null,
+      }));
+      if (rows.length) {
+        const { data: inserted } = await supabase.from("work_experience" as any).insert(rows).select();
+        if (inserted) {
+          setWorkExperience(inserted as any[]);
+        } else {
+          setWorkExperience(newWork);
+        }
+      } else {
+        setWorkExperience(newWork);
+      }
     }
   };
 
@@ -177,10 +222,16 @@ const Profile = () => {
 
   const handleDeleteCV = async () => {
     if (!user || !cvUrl) return;
-    await supabase.storage.from("cvs").remove([cvUrl]);
-    await supabase.from("profiles").update({ cv_url: null } as any).eq("user_id", user.id);
+    // Remove file, clear CV URL, and delete all parsed education/work entries
+    await Promise.all([
+      supabase.storage.from("cvs").remove([cvUrl]),
+      supabase.from("profiles").update({ cv_url: null } as any).eq("user_id", user.id),
+      supabase.from("education" as any).delete().eq("user_id", user.id),
+      supabase.from("work_experience" as any).delete().eq("user_id", user.id),
+    ]);
     setCvUrl(null); setCvFileName(null); setParsedProfile(null);
-    toast({ title: "CV removed" });
+    setEducation([]); setWorkExperience([]);
+    toast({ title: "CV and associated profile data removed" });
   };
 
   const addEducation = () => { setEducation([...education, { university: "", degree: "", field_of_study: "", start_date: "", end_date: "" }]); };

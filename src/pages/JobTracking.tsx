@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useGamification } from "@/hooks/useGamification";
 import { XPPopup } from "@/components/XPPopup";
+import { BACKEND_URL } from "@/config/backend";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -65,15 +66,19 @@ const JobTracking = () => {
         supabase.from("profiles").select("bio").eq("user_id", user.id).single(),
       ]);
 
-      const { data, error } = await supabase.functions.invoke("recommended-jobs", {
-        body: {
+      const res = await fetch(`${BACKEND_URL}/api/recommended-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           education: eduRes.data || [],
           work_experience: workRes.data || [],
           bio: profileRes.data?.bio || "",
-        },
+          cv_text: null,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Backend error");
+      const data = await res.json();
       setRecommendations(data.jobs || []);
     } catch (err) {
       console.error(err);

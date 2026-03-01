@@ -15,7 +15,7 @@ import { useGamification } from "@/hooks/useGamification";
 import { XPPopup } from "@/components/XPPopup";
 import { useAuth } from "@/hooks/useAuth";
 
-const BACKEND_URL = "https://8000-dr39d7fws.brevlab.com";
+import { BACKEND_URL } from "@/config/backend";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -116,6 +116,11 @@ const MockInterviews = () => {
   const speechStartTimeRef = useRef<number | null>(null);
   const fillerCountRef = useRef(0);
 
+  // Audio recording for backend transcription
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+
   // Webcam
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -152,7 +157,7 @@ const MockInterviews = () => {
     }, 0);
   };
 
-  const toggleListening = useCallback(() => {
+  const toggleListening = useCallback(async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("Speech recognition not supported in this browser.");
@@ -162,9 +167,30 @@ const MockInterviews = () => {
     if (isListening) {
       recognitionRef.current?.stop();
       recognitionRef.current = null;
+      // Stop audio recording
+      mediaRecorderRef.current?.stop();
       setIsListening(false);
       setAnswer((prev) => prev.replace(/\s*\[…\]$/, ""));
       return;
+    }
+
+    // Start audio recording alongside speech recognition
+    audioChunksRef.current = [];
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = audioStream;
+      const recorder = new MediaRecorder(audioStream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm',
+      });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+    } catch {
+      console.warn("Could not start audio recording — will fall back to text.");
     }
 
     committedTranscriptRef.current = answer;
@@ -267,6 +293,23 @@ const MockInterviews = () => {
       setIsListening(false);
     }
 
+    // Stop audio recording and collect blob
+    const audioBlob = await new Promise<Blob | null>((resolve) => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.onstop = () => {
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          // Stop audio stream tracks
+          audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+          audioStreamRef.current = null;
+          resolve(blob.size > 0 ? blob : null);
+        };
+        mediaRecorderRef.current.stop();
+      } else {
+        resolve(null);
+      }
+    });
+    mediaRecorderRef.current = null;
+
     const cleanAnswer = answer.replace(/\s*\[…\]$/, "");
     const wordCount = cleanAnswer.split(/\s+/).filter(Boolean).length;
     const durationSec = speechStartTimeRef.current ? (Date.now() - speechStartTimeRef.current) / 1000 : 60;
@@ -275,19 +318,35 @@ const MockInterviews = () => {
 
     setLoadingF(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/evaluate-answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: cleanAnswer,
-          question_text: question,
-          thinking_mode: thinkingMode,
-          persona_name: persona?.name || "Interviewer",
-          audio_duration_seconds: durationSec,
-          filler_words: fillerWords,
-          wpm,
-        }),
-      });
+      let res: Response;
+
+      if (audioBlob) {
+        // Send audio to dedicated audio endpoint
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'answer.webm');
+        formData.append('question_text', question);
+        formData.append('thinking_mode', thinkingMode);
+        formData.append('persona_name', persona?.name || 'Interviewer');
+        res = await fetch(`${BACKEND_URL}/api/evaluate-audio`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        // Fallback: send text transcript
+        res = await fetch(`${BACKEND_URL}/api/evaluate-answer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript: cleanAnswer,
+            question_text: question,
+            thinking_mode: thinkingMode,
+            persona_name: persona?.name || "Interviewer",
+            audio_duration_seconds: durationSec,
+            filler_words: fillerWords,
+            wpm,
+          }),
+        });
+      }
       if (!res.ok) throw new Error("Backend error");
       const data: FeedbackData = await res.json();
       setFeedbackData(data);
@@ -329,6 +388,12 @@ const MockInterviews = () => {
   const endInterview = () => {
     stopCamera();
     if (isListening) { recognitionRef.current?.stop(); recognitionRef.current = null; setIsListening(false); }
+    // Clean up audio recording
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
+    audioChunksRef.current = [];
     setStarted(false);
     setQuestion(null);
     setFeedbackData(null);
@@ -341,7 +406,12 @@ const MockInterviews = () => {
   };
 
   useEffect(() => {
-    return () => { stopCamera(); recognitionRef.current?.stop(); };
+    return () => {
+      stopCamera();
+      recognitionRef.current?.stop();
+      mediaRecorderRef.current?.stop();
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
   }, [stopCamera]);
 
   const fb = feedbackData?.feedback;

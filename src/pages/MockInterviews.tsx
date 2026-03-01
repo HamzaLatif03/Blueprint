@@ -379,8 +379,22 @@ const MockInterviews = () => {
           }),
         });
       } else {
+        // Review (deep) mode: call Brev backend
+        res = await fetch(`${BACKEND_URL}/api/evaluate-answer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript: cleanAnswer,
+            question_text: question,
+            thinking_mode: thinkingMode,
+            persona_name: persona?.name || "Interviewer",
+            audio_duration_seconds: durationSec,
+            filler_words: fillerWords,
+            wpm,
+          }),
+        });
       }
-      if (!res.ok) throw new Error("Backend error");
+      if (!res!.ok) throw new Error("Backend error");
       const data: FeedbackData = await res.json();
       setFeedbackData(data);
       setTotalTokens((t) => t + (data.tokens_used || 0));

@@ -153,19 +153,15 @@ const JobTracking = () => {
 
   const addApp = async () => {
     if (!form.company.trim() || !form.role.trim() || !user) return;
-    const tempId = crypto.randomUUID();
-    const newApp: JobApp = { id: tempId, company: form.company, role: form.role, status: form.status, applied_date: new Date().toISOString(), notes: form.notes || null, url: form.url || null };
-    setApps((prev) => [newApp, ...prev]);
     setForm({ company: "", role: "", status: "applied", url: "", notes: "" });
     setDialogOpen(false);
     toast.success("🎉 Application tracked!");
 
-    const { error } = await supabase.from("job_applications").insert({ ...form, user_id: user.id } as any);
+    const { data: inserted, error } = await supabase.from("job_applications").insert({ ...form, user_id: user.id } as any).select().single();
     if (error) {
-      toast.error("Failed to save — reverting");
-      setApps((prev) => prev.filter((a) => a.id !== tempId));
+      toast.error("Failed to save application");
     } else {
-      fetchApps();
+      setApps((prev) => [inserted as unknown as JobApp, ...prev]);
       await awardXP(10, "Application Tracked", `${form.role} at ${form.company}`);
       const count = apps.length + 1;
       if (count === 1) await unlockAchievement("first_application");

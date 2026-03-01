@@ -16,6 +16,7 @@ import { XPPopup } from "@/components/XPPopup";
 import { useAuth } from "@/hooks/useAuth";
 
 import { BACKEND_URL } from "@/config/backend";
+import { supabase } from "@/integrations/supabase/client";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -23,6 +24,7 @@ const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 const FILLER_WORDS = ["um", "uh", "like", "you know", "basically", "actually", "literally", "right", "so", "well"];
 
 const CATEGORIES = [
+  { value: "random", label: "🎲 Random" },
   { value: "behavioral", label: "Behavioral" },
   { value: "technical", label: "Technical" },
   { value: "situational", label: "Situational" },
@@ -88,7 +90,7 @@ const MockInterviews = () => {
   // Setup state
   const [role, setRole] = useState("");
   const [company, setCompany] = useState("");
-  const [category, setCategory] = useState("behavioral");
+  const [category, setCategory] = useState("random");
   const [difficulty, setDifficulty] = useState([3]);
   const [thinkingMode, setThinkingMode] = useState<"practice" | "review">("practice");
 
@@ -258,11 +260,14 @@ const MockInterviews = () => {
     setShowImprovedAnswer(false);
     committedTranscriptRef.current = "";
     try {
+      const actualCategory = category === "random"
+        ? ["behavioral", "technical", "situational", "competency"][Math.floor(Math.random() * 4)]
+        : category;
       const res = await fetch(`${BACKEND_URL}/api/generate-question`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          category,
+          category: actualCategory,
           difficulty: difficulty[0],
           user_id: user?.id || "",
           company,
@@ -272,7 +277,7 @@ const MockInterviews = () => {
       if (!res.ok) throw new Error("Backend error");
       const data = await res.json();
       setQuestion(data.question || "Tell me about a challenge you overcame.");
-      setQuestionCategory(data.category || category);
+      setQuestionCategory(data.category || actualCategory);
       setPersona(data.persona || null);
       setCompanyContext(data.company_context || null);
       setQuestionCount((c) => c + 1);
@@ -331,8 +336,35 @@ const MockInterviews = () => {
           method: "POST",
           body: formData,
         });
-      } else {
-        // Fallback: send text transcript
+      } else if (thinkingMode === "practice") {
+        // Practice mode: use edge function for better scoring
+        try {
+          const edgeRes = await supabase.functions.invoke("evaluate-practice", {
+            body: {
+              transcript: cleanAnswer,
+              question_text: question,
+              audio_duration_seconds: durationSec,
+              filler_words: fillerWords,
+              wpm,
+            },
+          });
+          if (edgeRes.data && !edgeRes.error) {
+            setFeedbackData(edgeRes.data as FeedbackData);
+            setTotalTokens((t) => t + (edgeRes.data.tokens_used || 0));
+            const score = edgeRes.data.feedback?.score || 50;
+            const xp = Math.max(10, Math.round(score / 10) * 10);
+            setSessionXP((t) => t + xp);
+            await awardXP(xp, "Interview Practice", `Score: ${score}/100 for ${role}`);
+            if (questionCount === 1) await unlockAchievement("first_interview_practice");
+            if (questionCount >= 10) await unlockAchievement("ten_interviews");
+            if (score >= 90) await unlockAchievement("perfect_score");
+            setLoadingF(false);
+            return;
+          }
+        } catch (e) {
+          console.warn("Edge function failed, falling back to Brev:", e);
+        }
+        // Fallback to Brev backend
         res = await fetch(`${BACKEND_URL}/api/evaluate-answer`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -346,6 +378,7 @@ const MockInterviews = () => {
             wpm,
           }),
         });
+      } else {
       }
       if (!res.ok) throw new Error("Backend error");
       const data: FeedbackData = await res.json();

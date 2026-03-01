@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter, Sparkles, RefreshCw, MapPin, DollarSign, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react";
+import { Briefcase, Plus, Trash2, ExternalLink, Loader2, Trophy, Zap, Filter, Sparkles, RefreshCw, MapPin, DollarSign, ChevronLeft, ChevronRight, CheckCircle, Search, Tag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ const categoryColors: Record<string, string> = {
 
 type JobApp = { id: string; company: string; role: string; status: string; applied_date: string; notes: string | null; url: string | null };
 type RecommendedJob = { company: string; role: string; url: string; match_reason: string; category: string; deadline_hint?: string; level: string; location: string; salary: string; logo_url: string };
+type SearchedJob = { title: string; company: string; match_score: number; requirements: string[]; why_match: string; url: string };
 
 const JobTracking = () => {
   const { user } = useAuth();
@@ -48,6 +49,14 @@ const JobTracking = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [recommendations, setRecommendations] = useState<RecommendedJob[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
+
+  // Job Search state
+  const [searchSkills, setSearchSkills] = useState("");
+  const [searchLocation, setSearchLocation] = useState("London");
+  const [searchRoleType, setSearchRoleType] = useState("graduate software engineer");
+  const [searchResults, setSearchResults] = useState<SearchedJob[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const fetchApps = async () => {
     if (!user) return;
@@ -94,6 +103,50 @@ const JobTracking = () => {
       }
     }
     setRecsLoading(false);
+  };
+
+  const searchJobs = async () => {
+    if (!searchSkills.trim()) return;
+    setSearchLoading(true);
+    setHasSearched(true);
+    try {
+      const skills = searchSkills.split(",").map((s) => s.trim()).filter(Boolean);
+      const res = await fetch(`${BACKEND_URL}/api/search-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skills,
+          location: searchLocation || "London",
+          role_type: searchRoleType || "graduate software engineer",
+        }),
+      });
+      if (!res.ok) throw new Error("Search failed");
+      const data = await res.json();
+      setSearchResults(data.jobs || []);
+      await awardXP(10, "Job Search", `Searched for ${skills.length} skills`);
+    } catch (err) {
+      console.warn("Job search failed:", err);
+      toast.error("Job search is currently unavailable. Try recommendations instead.");
+      setSearchResults([]);
+    }
+    setSearchLoading(false);
+  };
+
+  const addFromSearch = async (job: SearchedJob) => {
+    if (!user) return;
+    const tempId = crypto.randomUUID();
+    const newApp: JobApp = { id: tempId, company: job.company, role: job.title, status: "applied", applied_date: new Date().toISOString(), notes: job.why_match, url: job.url };
+    setApps((prev) => [newApp, ...prev]);
+    toast.success(`📨 Applied to ${job.title} at ${job.company}!`);
+
+    const { error } = await supabase.from("job_applications").insert({ company: job.company, role: job.title, status: "applied", url: job.url, notes: job.why_match, user_id: user.id } as any);
+    if (error) {
+      toast.error("Failed to save — reverting");
+      setApps((prev) => prev.filter((a) => a.id !== tempId));
+    } else {
+      fetchApps();
+      await awardXP(15, "Applied via Search", `${job.title} at ${job.company}`);
+    }
   };
 
   useEffect(() => { fetchApps(); }, [user]);
@@ -216,6 +269,127 @@ const JobTracking = () => {
             </div>
           </DialogContent>
         </Dialog>
+      </motion.div>
+
+      {/* Job Search Section */}
+      <motion.div variants={fadeUp} className="mb-6">
+        <Card className="card-glow overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-accent" />
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Search className="h-5 w-5 text-primary" /> Search Jobs by Skills 🔍
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Skills *</Label>
+                <Input
+                  placeholder="e.g. Python, React, SQL"
+                  value={searchSkills}
+                  onChange={(e) => setSearchSkills(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> Location</Label>
+                <Input
+                  placeholder="e.g. London"
+                  value={searchLocation}
+                  onChange={(e) => setSearchLocation(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5" /> Role Type</Label>
+                <Input
+                  placeholder="e.g. graduate software engineer"
+                  value={searchRoleType}
+                  onChange={(e) => setSearchRoleType(e.target.value)}
+                  className="h-11"
+                />
+              </div>
+            </div>
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <Button
+                onClick={searchJobs}
+                disabled={!searchSkills.trim() || searchLoading}
+                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground h-11 font-bold"
+                size="lg"
+              >
+                {searchLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                Search Jobs
+              </Button>
+            </motion.div>
+
+            {/* Search Loading */}
+            {searchLoading && (
+              <div className="flex flex-col items-center py-8 gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground font-medium">Searching live job listings... (30–45s)</p>
+              </div>
+            )}
+
+            {/* Search Results */}
+            <AnimatePresence>
+              {hasSearched && !searchLoading && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                  {searchResults.length === 0 ? (
+                    <div className="text-center py-6">
+                      <p className="text-muted-foreground font-medium">No jobs found. Try different skills or location.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 mt-2">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-bold">{searchResults.length} jobs found — sorted by match!</span>
+                      </div>
+                      {searchResults.map((job, i) => (
+                        <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
+                          <Card className="card-glow card-glow-hover hover:border-primary/30 transition-all overflow-hidden relative">
+                            <div className={`absolute left-0 top-0 bottom-0 w-1 ${job.match_score >= 80 ? "bg-accent" : job.match_score >= 60 ? "bg-primary" : "bg-secondary"}`} />
+                            <CardContent className="py-4 pl-5 flex flex-col sm:flex-row sm:items-center gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <h3 className="font-bold text-foreground">{job.title}</h3>
+                                  <span className="text-muted-foreground text-sm">@</span>
+                                  <span className="font-semibold text-foreground">{job.company}</span>
+                                  <Badge variant="outline" className="text-[10px] font-bold">{job.match_score}% match</Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">{job.why_match}</p>
+                                {job.requirements.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {job.requirements.slice(0, 4).map((req, ri) => (
+                                      <Badge key={ri} variant="secondary" className="text-[9px]">{req}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                  <Button size="sm" className="text-xs font-bold gap-1 bg-primary hover:bg-primary/90 text-primary-foreground h-8" onClick={() => addFromSearch(job)}>
+                                    <Plus className="h-3.5 w-3.5" /> Track
+                                  </Button>
+                                </motion.div>
+                                {job.url && (
+                                  <a href={job.url} target="_blank" rel="noopener noreferrer">
+                                    <Button variant="outline" size="sm" className="h-8 text-xs font-bold gap-1">
+                                      <ExternalLink className="h-3.5 w-3.5" /> Apply
+                                    </Button>
+                                  </a>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Stats */}
@@ -363,7 +537,7 @@ const JobTracking = () => {
             {recsLoading ? (
               <div className="flex flex-col items-center py-10 gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground font-medium">Analysing your profile for the best matches...</p>
+                <p className="text-sm text-muted-foreground font-medium">Finding personalized matches... (25–40s)</p>
               </div>
             ) : recommendations.length === 0 ? (
               <div className="text-center py-8">
@@ -379,7 +553,6 @@ const JobTracking = () => {
               </div>
             ) : (
               <div className="relative">
-                {/* Scroll arrows */}
                 <button onClick={() => scrollBy(-1)} className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 z-10 h-8 w-8 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors">
                   <ChevronLeft className="h-4 w-4 text-foreground" />
                 </button>
@@ -405,7 +578,6 @@ const JobTracking = () => {
                             "from-muted-foreground/30 to-muted-foreground/10"
                           }`} />
                           <CardContent className="py-4 flex flex-col gap-3 flex-1">
-                            {/* Company Header */}
                             <div className="flex items-center gap-3">
                               <img
                                 src={job.logo_url}
@@ -421,10 +593,8 @@ const JobTracking = () => {
                               </div>
                             </div>
 
-                            {/* Role */}
                             <h3 className="font-extrabold text-foreground leading-snug text-[15px]">{job.role}</h3>
 
-                            {/* Details */}
                             <div className="space-y-1.5">
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Briefcase className="h-3.5 w-3.5 shrink-0" />
@@ -440,10 +610,8 @@ const JobTracking = () => {
                               </div>
                             </div>
 
-                            {/* Match reason */}
                             <p className="text-[11px] text-muted-foreground flex-1 leading-relaxed">{job.match_reason}</p>
 
-                            {/* Actions */}
                             <div className="flex gap-2 mt-auto pt-2">
                               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="flex-1">
                                 <Button size="sm" className="w-full h-9 text-xs font-bold gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => addFromRecommendation(job)}>

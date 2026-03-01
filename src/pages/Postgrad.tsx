@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GraduationCap, Search, Loader2, MapPin, BarChart3, Sparkles, Trophy, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { supabase } from "@/integrations/supabase/client";
 import { useGamification } from "@/hooks/useGamification";
 import { XPPopup } from "@/components/XPPopup";
+import { useAuth } from "@/hooks/useAuth";
+import { BACKEND_URL } from "@/config/backend";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -20,6 +22,7 @@ const matchColor = (pct: number) => pct >= 85 ? "text-accent" : pct >= 70 ? "tex
 const matchEmoji = (pct: number) => pct >= 90 ? "🔥" : pct >= 80 ? "⭐" : pct >= 70 ? "👍" : "📝";
 
 const Postgrad = () => {
+  const { user } = useAuth();
   const { awardXP, unlockAchievement, xpPopup } = useGamification();
   const [degreeType, setDegreeType] = useState("both");
   const [interests, setInterests] = useState("");
@@ -33,9 +36,39 @@ const Postgrad = () => {
     setLoading(true);
     setSearched(true);
     try {
-      const { data } = await supabase.functions.invoke("postgrad-match", {
-        body: { interests, background, degree_type: degreeType },
+      // Fetch user profile data from database to send to Brev
+      let education: any[] = [];
+      let workExperience: any[] = [];
+      let bio = "";
+      let cvText: string | null = null;
+
+      if (user) {
+        const [eduRes, workRes, profileRes] = await Promise.all([
+          supabase.from("education" as any).select("*").eq("user_id", user.id),
+          supabase.from("work_experience" as any).select("*").eq("user_id", user.id),
+          supabase.from("profiles").select("bio, cv_url").eq("user_id", user.id).single(),
+        ]);
+        education = eduRes.data || [];
+        workExperience = workRes.data || [];
+        bio = profileRes.data?.bio || "";
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/postgrad-match`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          interests,
+          background,
+          degree_type: degreeType,
+          education,
+          work_experience: workExperience,
+          bio,
+          cv_text: cvText,
+        }),
       });
+
+      if (!res.ok) throw new Error("Backend error");
+      const data = await res.json();
       setResults(data?.programmes || []);
       await awardXP(15, "Postgrad Search", `Searched for ${degreeType} programmes`);
       await unlockAchievement("postgrad_explorer");

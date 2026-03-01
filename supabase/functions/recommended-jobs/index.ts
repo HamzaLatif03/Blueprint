@@ -32,10 +32,20 @@ serve(async (req) => {
         max_tokens: 3000,
         messages: [{
           role: "user",
-          content: `Based on this student/graduate profile, recommend 8-10 specific real job/internship openings they should apply for RIGHT NOW. Focus on well-known companies and real programme types.
+          content: `Based on this student/graduate profile, recommend 8-10 specific real job/internship openings they should apply for RIGHT NOW.
 
 Profile:
 ${profileSummary || "No profile data provided - suggest popular graduate programmes across finance, tech, and consulting."}
+
+IMPORTANT — match_score calculation:
+You MUST assign each job a match_score (0-100) that reflects how well the candidate's SPECIFIC skills, degree, and experience match the role requirements:
+- 85-99: Direct match — their degree/skills are exactly what the role requires
+- 70-84: Strong match — most of their background is relevant  
+- 55-69: Moderate match — some transferable skills but not a direct fit
+- 40-54: Stretch — would need significant upskilling
+- Below 40: Weak match — only tangentially related
+
+Each job MUST have a DIFFERENT match_score. Do NOT give all jobs similar scores.
 
 Return ONLY valid JSON array, no markdown. Each object must have:
 - "company": company name (string)
@@ -43,12 +53,13 @@ Return ONLY valid JSON array, no markdown. Each object must have:
 - "level": one of "Internship", "Graduate", "Junior", "Mid-Level", "Senior" (string)
 - "location": city or "Remote" (string)
 - "salary": estimated salary range e.g. "£25,000 - £35,000" or "Competitive" (string)
-- "logo_url": use "https://logo.clearbit.com/{company domain}" for the company logo e.g. "https://logo.clearbit.com/google.com" (string)
-- "url": real application URL - use the actual careers page URL for that company's graduate/internship programme (string)
-- "match_reason": one sentence why this is a good fit (string)
+- "logo_url": use "https://logo.clearbit.com/{company domain}" for the company logo (string)
+- "url": real application URL (string)
+- "match_reason": one sentence why this is a good fit referencing their SPECIFIC background (string)
+- "match_score": 0-100 calculated as described above (number)
 - "category": one of "Finance", "Technology", "Consulting", "Law", "Other" (string)
 
-Return real companies with real career page URLs. Prefer companies actively hiring graduates/interns. Make sure logo_url uses the correct company domain.`
+Return real companies with real career page URLs. Make sure logo_url uses the correct company domain.`
         }],
       }),
     });

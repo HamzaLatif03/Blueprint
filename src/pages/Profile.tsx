@@ -177,16 +177,13 @@ const Profile = () => {
 
   const handleDeleteCV = async () => {
     if (!user || !cvUrl) return;
-    // Remove file, clear CV URL, and delete all parsed education/work entries
+    // Only remove the file and clear CV URL — keep education/work data
     await Promise.all([
       supabase.storage.from("cvs").remove([cvUrl]),
       supabase.from("profiles").update({ cv_url: null } as any).eq("user_id", user.id),
-      supabase.from("education" as any).delete().eq("user_id", user.id),
-      supabase.from("work_experience" as any).delete().eq("user_id", user.id),
     ]);
     setCvUrl(null); setCvFileName(null); setParsedProfile(null);
-    setEducation([]); setWorkExperience([]);
-    toast({ title: "CV and associated profile data removed" });
+    toast({ title: "CV removed" });
   };
 
   const addEducation = () => { setEducation([...education, { university: "", degree: "", field_of_study: "", start_date: "", end_date: "" }]); };

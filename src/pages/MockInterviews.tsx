@@ -1,52 +1,138 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Send, Video, VideoOff, Star, Loader2, Sparkles, Trophy, Zap, ArrowRight, RotateCcw } from "lucide-react";
+import { Mic, MicOff, Send, Video, VideoOff, Star, Loader2, Sparkles, Trophy, Zap, ArrowRight, RotateCcw, User, BookOpen, Brain, ChevronUp, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useGamification } from "@/hooks/useGamification";
 import { XPPopup } from "@/components/XPPopup";
-import { XPBar } from "@/components/XPBar";
+import { useAuth } from "@/hooks/useAuth";
+
+const BACKEND_URL = "https://8000-dr39d7fws.brevlab.com";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
 
+const FILLER_WORDS = ["um", "uh", "like", "you know", "basically", "actually", "literally", "right", "so", "well"];
+
+const CATEGORIES = [
+  { value: "behavioral", label: "Behavioral" },
+  { value: "technical", label: "Technical" },
+  { value: "situational", label: "Situational" },
+  { value: "competency", label: "Competency" },
+];
+
+interface Persona {
+  name: string;
+  age?: number;
+  occupation: string;
+  interview_style?: string;
+}
+
+interface PracticeFeedback {
+  score: number;
+  pass: boolean;
+  tip: string;
+}
+
+interface StarComponent {
+  present: boolean;
+  quality: string;
+  feedback: string;
+}
+
+interface VocabUpgrade {
+  original: string;
+  suggested: string;
+}
+
+interface ReviewFeedback {
+  score: number;
+  pass: boolean;
+  star_analysis?: {
+    situation: StarComponent;
+    task: StarComponent;
+    action: StarComponent;
+    result: StarComponent;
+  };
+  vocabulary?: {
+    current_level: string;
+    upgrades: VocabUpgrade[];
+    score: number;
+  };
+  missing_elements?: string[];
+  improved_answer?: string;
+  top_strengths?: string[];
+  areas_to_improve?: string[];
+  tip: string;
+}
+
+type FeedbackData = {
+  feedback: PracticeFeedback | ReviewFeedback;
+  thinking_mode: string;
+  tokens_used: number;
+  model_used: string;
+};
+
 const MockInterviews = () => {
   const { awardXP, unlockAchievement, xpPopup } = useGamification();
+  const { user } = useAuth();
+
+  // Setup state
   const [role, setRole] = useState("");
-  const [industry, setIndustry] = useState("");
+  const [company, setCompany] = useState("");
+  const [category, setCategory] = useState("behavioral");
+  const [difficulty, setDifficulty] = useState([3]);
+  const [thinkingMode, setThinkingMode] = useState<"practice" | "review">("practice");
+
+  // Session state
   const [started, setStarted] = useState(false);
-  const [question, setQuestion] = useState<{ question: string; question_type: string } | null>(null);
+  const [question, setQuestion] = useState<string | null>(null);
+  const [questionCategory, setQuestionCategory] = useState("");
+  const [persona, setPersona] = useState<Persona | null>(null);
+  const [companyContext, setCompanyContext] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
-  const [feedback, setFeedback] = useState<{ score: number; feedback: string; strengths: string[]; improvements: string[] } | null>(null);
+  const [feedbackData, setFeedbackData] = useState<FeedbackData | null>(null);
   const [loadingQ, setLoadingQ] = useState(false);
   const [loadingF, setLoadingF] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
   const [sessionXP, setSessionXP] = useState(0);
+  const [totalTokens, setTotalTokens] = useState(0);
   const [cameraOn, setCameraOn] = useState(true);
-  const [previousQuestions, setPreviousQuestions] = useState<string[]>([]);
+  const [showImprovedAnswer, setShowImprovedAnswer] = useState(false);
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
+
+  // Speech tracking
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const committedTranscriptRef = useRef("");
+  const speechStartTimeRef = useRef<number | null>(null);
+  const fillerCountRef = useRef(0);
 
   // Webcam
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Speech-to-text
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const committedTranscriptRef = useRef("");
+  // Health check
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/health`)
+      .then((r) => r.json())
+      .then((d) => setBackendOnline(d.status === "ok"))
+      .catch(() => setBackendOnline(false));
+  }, []);
 
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
     } catch {
       toast.error("Could not access camera. Check permissions.");
     }
@@ -56,6 +142,15 @@ const MockInterviews = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
+
+  // Count filler words in text
+  const countFillers = (text: string): number => {
+    const lower = text.toLowerCase();
+    return FILLER_WORDS.reduce((count, word) => {
+      const regex = new RegExp(`\\b${word}\\b`, "gi");
+      return count + (lower.match(regex)?.length || 0);
+    }, 0);
+  };
 
   const toggleListening = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -72,8 +167,9 @@ const MockInterviews = () => {
       return;
     }
 
-    // Snapshot current answer as our committed base
     committedTranscriptRef.current = answer;
+    speechStartTimeRef.current = Date.now();
+    fillerCountRef.current = 0;
 
     const startRecognition = () => {
       const recognition = new SpeechRecognition();
@@ -84,8 +180,6 @@ const MockInterviews = () => {
       recognition.onresult = (event: any) => {
         let final = "";
         let interim = "";
-
-        // Only process NEW results to avoid repeating previous transcript chunks
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
@@ -94,9 +188,8 @@ const MockInterviews = () => {
             interim += transcript;
           }
         }
-
         if (final.trim()) {
-          // Commit finalized text permanently
+          fillerCountRef.current += countFillers(final);
           committedTranscriptRef.current = (committedTranscriptRef.current ? committedTranscriptRef.current + " " : "") + final.trim();
           setAnswer(committedTranscriptRef.current);
         } else if (interim) {
@@ -112,7 +205,6 @@ const MockInterviews = () => {
       };
 
       recognition.onend = () => {
-        // Auto-restart if still supposed to be listening
         if (recognitionRef.current === recognition) {
           try {
             const fresh = startRecognition();
@@ -135,19 +227,35 @@ const MockInterviews = () => {
 
   const generateQuestion = async () => {
     setLoadingQ(true);
-    setFeedback(null);
+    setFeedbackData(null);
     setAnswer("");
+    setShowImprovedAnswer(false);
     committedTranscriptRef.current = "";
     try {
-      const { data } = await supabase.functions.invoke("interview-ai", {
-        body: { action: "generate_question", role, industry, previous_questions: previousQuestions },
+      const res = await fetch(`${BACKEND_URL}/api/generate-question`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category,
+          difficulty: difficulty[0],
+          user_id: user?.id || "",
+          company,
+          role,
+        }),
       });
-      if (data?.question) {
-        setPreviousQuestions((prev) => [...prev, data.question]);
-      }
-      setQuestion(data);
+      if (!res.ok) throw new Error("Backend error");
+      const data = await res.json();
+      setQuestion(data.question || "Tell me about a challenge you overcame.");
+      setQuestionCategory(data.category || category);
+      setPersona(data.persona || null);
+      setCompanyContext(data.company_context || null);
       setQuestionCount((c) => c + 1);
-    } catch { setQuestion({ question: "Tell me about a challenge you overcame.", question_type: "behavioral" }); }
+    } catch {
+      toast.error("Could not reach backend. Using fallback question.");
+      setQuestion("Tell me about a time you had to learn something new quickly.");
+      setQuestionCategory(category);
+      setPersona({ name: "AI Interviewer", occupation: "General" });
+    }
     setLoadingQ(false);
   };
 
@@ -158,22 +266,50 @@ const MockInterviews = () => {
       recognitionRef.current = null;
       setIsListening(false);
     }
+
+    const cleanAnswer = answer.replace(/\s*\[…\]$/, "");
+    const wordCount = cleanAnswer.split(/\s+/).filter(Boolean).length;
+    const durationSec = speechStartTimeRef.current ? (Date.now() - speechStartTimeRef.current) / 1000 : 60;
+    const wpm = durationSec > 0 ? Math.round((wordCount / durationSec) * 60) : 0;
+    const fillerWords = fillerCountRef.current + countFillers(cleanAnswer);
+
     setLoadingF(true);
     try {
-      const { data } = await supabase.functions.invoke("interview-ai", {
-        body: { action: "get_feedback", question: question.question, answer, role },
+      const res = await fetch(`${BACKEND_URL}/api/evaluate-answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: cleanAnswer,
+          question_text: question,
+          thinking_mode: thinkingMode,
+          persona_name: persona?.name || "Interviewer",
+          audio_duration_seconds: durationSec,
+          filler_words: fillerWords,
+          wpm,
+        }),
       });
-      setFeedback(data);
-      const xp = Math.max(10, (data?.score || 5) * 10);
+      if (!res.ok) throw new Error("Backend error");
+      const data: FeedbackData = await res.json();
+      setFeedbackData(data);
+      setTotalTokens((t) => t + (data.tokens_used || 0));
+
+      const score = data.feedback?.score || 50;
+      const xp = Math.max(10, Math.round(score / 10) * 10);
       setSessionXP((t) => t + xp);
-      await awardXP(xp, "Interview Practice", `Score: ${data?.score}/10 for ${role}`);
+      await awardXP(xp, "Interview Practice", `Score: ${score}/100 for ${role}`);
       if (questionCount === 1) await unlockAchievement("first_interview_practice");
       if (questionCount >= 10) await unlockAchievement("ten_interviews");
-      if (data?.score >= 10) await unlockAchievement("perfect_score");
-    } catch { 
-      setFeedback({ score: 7, feedback: "Good effort. Try adding more specifics.", strengths: ["Clear communication"], improvements: ["Add metrics"] }); 
-      setSessionXP((t) => t + 70);
-      await awardXP(70, "Interview Practice");
+      if (score >= 90) await unlockAchievement("perfect_score");
+    } catch {
+      toast.error("Could not get feedback. Try again.");
+      setFeedbackData({
+        feedback: { score: 65, pass: true, tip: "Good effort. Try adding more specifics." },
+        thinking_mode: thinkingMode,
+        tokens_used: 0,
+        model_used: "fallback",
+      });
+      setSessionXP((t) => t + 30);
+      await awardXP(30, "Interview Practice");
     }
     setLoadingF(false);
   };
@@ -186,36 +322,34 @@ const MockInterviews = () => {
   };
 
   const toggleCamera = useCallback(() => {
-    if (cameraOn) {
-      stopCamera();
-      setCameraOn(false);
-    } else {
-      startCamera();
-      setCameraOn(true);
-    }
+    if (cameraOn) { stopCamera(); setCameraOn(false); }
+    else { startCamera(); setCameraOn(true); }
   }, [cameraOn, startCamera, stopCamera]);
 
   const endInterview = () => {
     stopCamera();
-    if (isListening) {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      setIsListening(false);
-    }
+    if (isListening) { recognitionRef.current?.stop(); recognitionRef.current = null; setIsListening(false); }
     setStarted(false);
     setQuestion(null);
-    setFeedback(null);
+    setFeedbackData(null);
     setQuestionCount(0);
     setSessionXP(0);
-    setPreviousQuestions([]);
+    setTotalTokens(0);
+    setPersona(null);
+    setCompanyContext(null);
+    setShowImprovedAnswer(false);
   };
 
   useEffect(() => {
     return () => { stopCamera(); recognitionRef.current?.stop(); };
   }, [stopCamera]);
 
-  const scoreColor = (s: number) => s >= 8 ? "text-accent" : s >= 5 ? "text-[hsl(var(--xp-bar))]" : "text-destructive";
-  const scoreEmoji = (s: number) => s >= 9 ? "🔥" : s >= 7 ? "💪" : s >= 5 ? "👍" : "📝";
+  const fb = feedbackData?.feedback;
+  const isReview = feedbackData?.thinking_mode === "review";
+  const reviewFb = isReview ? (fb as ReviewFeedback) : null;
+  const scoreColor = (s: number) => s >= 75 ? "text-accent" : s >= 50 ? "text-[hsl(var(--xp-bar))]" : "text-destructive";
+  const scoreEmoji = (s: number) => s >= 85 ? "🔥" : s >= 65 ? "💪" : s >= 50 ? "👍" : "📝";
+  const starQualityColor = (q: string) => q === "good" ? "text-accent" : q === "fair" ? "text-[hsl(var(--xp-bar))]" : "text-destructive";
 
   return (
     <motion.div className="max-w-6xl mx-auto" initial="hidden" animate="visible" variants={stagger}>
@@ -232,18 +366,27 @@ const MockInterviews = () => {
             </h1>
             <p className="mt-2 text-muted-foreground">Practice with AI-powered feedback and level up your interview skills.</p>
           </div>
-          {started && (
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex gap-2">
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
-                <Zap className="h-4 w-4 text-[hsl(var(--xp-bar))]" />
-                {sessionXP} XP
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
-                <Trophy className="h-4 w-4 text-[hsl(var(--level))]" />
-                Q{questionCount}
-              </div>
-            </motion.div>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            {backendOnline !== null && (
+              <Badge variant={backendOnline ? "default" : "destructive"} className="gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${backendOnline ? "bg-accent animate-pulse" : "bg-destructive-foreground"}`} />
+                {backendOnline ? "Backend Online" : "Backend Offline"}
+              </Badge>
+            )}
+            {started && (
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex gap-2">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
+                  <Zap className="h-4 w-4 text-[hsl(var(--xp-bar))]" /> {sessionXP} XP
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
+                  <Trophy className="h-4 w-4 text-[hsl(var(--level))]" /> Q{questionCount}
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full glass text-sm font-bold">
+                  <Brain className="h-4 w-4 text-primary" /> {totalTokens} tokens
+                </div>
+              </motion.div>
+            )}
+          </div>
         </div>
       </motion.div>
 
@@ -256,18 +399,49 @@ const MockInterviews = () => {
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Sparkles className="h-5 w-5 text-primary" /> Set Up Your Interview
                 </CardTitle>
-                <CardDescription>Tell us about the role — we'll tailor the questions to you. Your webcam and mic will be used.</CardDescription>
+                <CardDescription>Tell us about the role — we'll tailor the questions to you.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="role" className="font-semibold">Role / Position *</Label>
-                    <Input id="role" placeholder="e.g. Software Engineer" value={role} onChange={(e) => setRole(e.target.value)} className="h-12 text-base" />
+                    <Input id="role" placeholder="e.g. Graduate Software Engineer" value={role} onChange={(e) => setRole(e.target.value)} className="h-12 text-base" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="industry" className="font-semibold">Industry</Label>
-                    <Input id="industry" placeholder="e.g. FinTech" value={industry} onChange={(e) => setIndustry(e.target.value)} className="h-12 text-base" />
+                    <Label htmlFor="company" className="font-semibold">Company (optional)</Label>
+                    <Input id="company" placeholder="e.g. Google — triggers company research" value={company} onChange={(e) => setCompany(e.target.value)} className="h-12 text-base" />
                   </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="font-semibold">Category</Label>
+                    <Select value={category} onValueChange={setCategory}>
+                      <SelectTrigger className="h-12 text-base">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="font-semibold">Difficulty: {difficulty[0]}/5</Label>
+                    <Slider min={1} max={5} step={1} value={difficulty} onValueChange={setDifficulty} className="mt-3" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-semibold">Feedback Mode</Label>
+                  <Tabs value={thinkingMode} onValueChange={(v) => setThinkingMode(v as "practice" | "review")}>
+                    <TabsList className="w-full sm:w-auto">
+                      <TabsTrigger value="practice" className="gap-2"><Zap className="h-4 w-4" /> Practice (Fast)</TabsTrigger>
+                      <TabsTrigger value="review" className="gap-2"><BookOpen className="h-4 w-4" /> Review (Deep)</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <p className="text-xs text-muted-foreground">
+                    {thinkingMode === "practice" ? "Quick score + tip in 1-3 seconds" : "Full STAR breakdown, vocabulary upgrades & improved answer in 5-15 seconds"}
+                  </p>
                 </div>
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button onClick={startInterview} disabled={!role.trim()} className="gap-2 w-full sm:w-auto h-12 text-base font-bold" size="lg">
@@ -308,13 +482,39 @@ const MockInterviews = () => {
                   </div>
                 </div>
               </Card>
+
               <Card className="card-glow">
-                <CardContent className="pt-4">
-                  <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Interviewing for</p>
+                <CardContent className="pt-4 space-y-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Interviewing for</p>
                   <p className="font-bold text-lg text-foreground">{role}</p>
-                  {industry && <Badge variant="secondary" className="mt-1">{industry}</Badge>}
+                  <div className="flex gap-2 flex-wrap">
+                    {company && <Badge variant="secondary">{company}</Badge>}
+                    <Badge variant="outline" className="capitalize">{category}</Badge>
+                    <Badge variant="outline">Difficulty {difficulty[0]}/5</Badge>
+                    <Badge variant="outline" className="capitalize">{thinkingMode} mode</Badge>
+                  </div>
+
+                  {/* Persona */}
+                  {persona && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <User className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">{persona.name}</p>
+                        <p className="text-xs text-muted-foreground">{persona.occupation}</p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {companyContext && (
+                    <div className="text-xs text-muted-foreground bg-primary/5 p-2 rounded-lg border border-primary/10">
+                      <span className="font-semibold text-primary">Company insight:</span> {companyContext}
+                    </div>
+                  )}
+
                   <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <Button variant="outline" size="sm" className="mt-4 w-full gap-2" onClick={endInterview}>
+                    <Button variant="outline" size="sm" className="w-full gap-2" onClick={endInterview}>
                       <RotateCcw className="h-3.5 w-3.5" /> End & Reset
                     </Button>
                   </motion.div>
@@ -331,7 +531,7 @@ const MockInterviews = () => {
                     <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}>
                       <Sparkles className="h-5 w-5 text-primary" />
                     </motion.div>
-                    AI Interviewer
+                    {persona ? `${persona.name} — ${persona.occupation}` : "AI Interviewer"}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -346,8 +546,8 @@ const MockInterviews = () => {
                     </motion.div>
                   ) : question ? (
                     <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
-                      <Badge variant="outline" className="mb-3 text-xs font-bold uppercase tracking-wider border-primary/30 text-primary">{question.question_type}</Badge>
-                      <p className="text-lg font-semibold text-foreground leading-relaxed">{question.question}</p>
+                      <Badge variant="outline" className="mb-3 text-xs font-bold uppercase tracking-wider border-primary/30 text-primary">{questionCategory}</Badge>
+                      <p className="text-lg font-semibold text-foreground leading-relaxed">{question}</p>
                     </motion.div>
                   ) : null}
                 </CardContent>
@@ -363,15 +563,11 @@ const MockInterviews = () => {
                         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                           <Button onClick={submitAnswer} disabled={!answer.trim() || loadingF} className="gap-2 font-bold">
                             {loadingF ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                            Submit for Review
+                            {thinkingMode === "review" ? "Deep Review" : "Submit"}
                           </Button>
                         </motion.div>
                         <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                          <Button
-                            variant={isListening ? "destructive" : "outline"}
-                            onClick={toggleListening}
-                            className="gap-2 font-bold"
-                          >
+                          <Button variant={isListening ? "destructive" : "outline"} onClick={toggleListening} className="gap-2 font-bold">
                             {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                             {isListening ? "Stop Listening" : "Use Mic 🎙️"}
                           </Button>
@@ -391,59 +587,128 @@ const MockInterviews = () => {
                 </motion.div>
               )}
 
+              {/* Feedback */}
               <AnimatePresence>
-                {feedback && (
+                {feedbackData && fb && (
                   <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: "spring", duration: 0.5 }}>
                     <Card className="card-glow overflow-hidden relative">
                       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent to-accent/60" />
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center gap-2">
-                          <Star className="h-5 w-5 text-accent" /> Performance Review {scoreEmoji(feedback.score)}
+                          <Star className="h-5 w-5 text-accent" /> Performance Review {scoreEmoji(fb.score)}
                         </CardTitle>
+                        <div className="flex gap-2">
+                          <Badge variant={fb.pass ? "default" : "destructive"}>{fb.pass ? "PASS ✅" : "NEEDS WORK"}</Badge>
+                          <Badge variant="outline" className="capitalize">{feedbackData.thinking_mode} mode</Badge>
+                          <Badge variant="secondary">{feedbackData.tokens_used} tokens</Badge>
+                        </div>
                       </CardHeader>
                       <CardContent className="space-y-5">
+                        {/* Score */}
                         <div className="flex items-center gap-6">
-                          <motion.div 
-                            initial={{ scale: 0 }} 
-                            animate={{ scale: 1 }} 
-                            transition={{ type: "spring", delay: 0.2 }}
-                            className={`text-5xl font-black ${scoreColor(feedback.score)}`}
-                          >
-                            {feedback.score}
+                          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.2 }} className={`text-5xl font-black ${scoreColor(fb.score)}`}>
+                            {fb.score}
                           </motion.div>
                           <div className="flex-1 space-y-2">
                             <div className="flex justify-between text-sm">
                               <span className="font-medium">Score</span>
-                              <span className="text-muted-foreground">{feedback.score}/10</span>
+                              <span className="text-muted-foreground">{fb.score}/100</span>
                             </div>
                             <div className="h-3 rounded-full bg-muted overflow-hidden">
-                              <motion.div 
-                                className="h-full rounded-full xp-gradient" 
-                                initial={{ width: 0 }} 
-                                animate={{ width: `${feedback.score * 10}%` }} 
-                                transition={{ duration: 0.8, delay: 0.3 }}
-                              />
+                              <motion.div className="h-full rounded-full xp-gradient" initial={{ width: 0 }} animate={{ width: `${fb.score}%` }} transition={{ duration: 0.8, delay: 0.3 }} />
                             </div>
-                            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="text-xs text-muted-foreground font-medium">
-                              +{feedback.score * 10} XP earned!
-                            </motion.p>
                           </div>
                         </div>
-                        <p className="text-sm text-foreground leading-relaxed">{feedback.feedback}</p>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          {feedback.strengths?.length > 0 && (
-                            <div className="rounded-xl bg-accent/5 border border-accent/20 p-4">
-                              <p className="text-sm font-bold text-accent mb-2 flex items-center gap-1">✅ Strengths</p>
-                              <ul className="text-sm space-y-1.5">{feedback.strengths.map((s, i) => <motion.li key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 + i * 0.1 }} className="text-muted-foreground">{s}</motion.li>)}</ul>
+
+                        {/* Tip */}
+                        <p className="text-sm text-foreground leading-relaxed bg-primary/5 p-3 rounded-lg border border-primary/10">
+                          💡 {fb.tip}
+                        </p>
+
+                        {/* STAR Analysis (Review mode) */}
+                        {reviewFb?.star_analysis && (
+                          <div className="space-y-3">
+                            <h4 className="font-bold text-sm flex items-center gap-2"><Star className="h-4 w-4 text-primary" /> STAR Analysis</h4>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {(["situation", "task", "action", "result"] as const).map((key) => {
+                                const item = reviewFb.star_analysis![key];
+                                return (
+                                  <motion.div key={key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-lg border bg-card">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="font-bold text-xs uppercase tracking-wider">{key}</span>
+                                      <Badge variant={item.present ? "default" : "destructive"} className="text-xs">
+                                        {item.present ? item.quality : "missing"}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{item.feedback}</p>
+                                  </motion.div>
+                                );
+                              })}
                             </div>
-                          )}
-                          {feedback.improvements?.length > 0 && (
-                            <div className="rounded-xl bg-destructive/5 border border-destructive/20 p-4">
-                              <p className="text-sm font-bold text-destructive mb-2 flex items-center gap-1">🎯 To Improve</p>
-                              <ul className="text-sm space-y-1.5">{feedback.improvements.map((s, i) => <motion.li key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 + i * 0.1 }} className="text-muted-foreground">{s}</motion.li>)}</ul>
+                          </div>
+                        )}
+
+                        {/* Vocabulary Upgrades (Review) */}
+                        {reviewFb?.vocabulary && reviewFb.vocabulary.upgrades.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="font-bold text-sm flex items-center gap-2">📚 Vocabulary ({reviewFb.vocabulary.current_level})</h4>
+                            <div className="flex gap-2 flex-wrap">
+                              {reviewFb.vocabulary.upgrades.map((u, i) => (
+                                <Badge key={i} variant="outline" className="gap-1 text-xs">
+                                  <span className="line-through text-muted-foreground">{u.original}</span>
+                                  <ArrowRight className="h-3 w-3" />
+                                  <span className="text-primary font-bold">{u.suggested}</span>
+                                </Badge>
+                              ))}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
+
+                        {/* Strengths & Improvements (Review) */}
+                        {reviewFb && (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {reviewFb.top_strengths && reviewFb.top_strengths.length > 0 && (
+                              <div className="rounded-xl bg-accent/5 border border-accent/20 p-4">
+                                <p className="text-sm font-bold text-accent mb-2">✅ Strengths</p>
+                                <ul className="text-sm space-y-1.5">
+                                  {reviewFb.top_strengths.map((s, i) => (
+                                    <motion.li key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 + i * 0.1 }} className="text-muted-foreground">• {s}</motion.li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {reviewFb.areas_to_improve && reviewFb.areas_to_improve.length > 0 && (
+                              <div className="rounded-xl bg-destructive/5 border border-destructive/20 p-4">
+                                <p className="text-sm font-bold text-destructive mb-2">🎯 To Improve</p>
+                                <ul className="text-sm space-y-1.5">
+                                  {reviewFb.areas_to_improve.map((s, i) => (
+                                    <motion.li key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 + i * 0.1 }} className="text-muted-foreground">• {s}</motion.li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Improved Answer (Review) */}
+                        {reviewFb?.improved_answer && (
+                          <div className="space-y-2">
+                            <Button variant="ghost" size="sm" className="gap-2 text-sm" onClick={() => setShowImprovedAnswer(!showImprovedAnswer)}>
+                              {showImprovedAnswer ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              {showImprovedAnswer ? "Hide" : "Show"} Improved Answer
+                            </Button>
+                            <AnimatePresence>
+                              {showImprovedAnswer && (
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                  <div className="p-4 rounded-lg bg-accent/5 border border-accent/20 text-sm text-foreground leading-relaxed">
+                                    {reviewFb.improved_answer}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        )}
+
                         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                           <Button onClick={generateQuestion} className="w-full gap-2 font-bold" variant="outline">
                             Next Question <ArrowRight className="h-4 w-4" />

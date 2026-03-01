@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Upload, FileText, Loader2, User, GraduationCap, Briefcase, Sparkles, Save } from "lucide-react";
+import { Plus, Trash2, Upload, FileText, Loader2, User, GraduationCap, Briefcase, Sparkles, Save, Brain, AlertTriangle, CheckCircle, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AvatarSelector } from "@/components/AvatarSelector";
+import { BACKEND_URL } from "@/config/backend";
 
 const fadeUp = { hidden: { opacity: 0, y: 24 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4 } } };
 const stagger = { visible: { transition: { staggerChildren: 0.1 } } };
@@ -32,6 +33,22 @@ interface WorkExperience {
   end_date: string;
 }
 
+interface ParsedProfile {
+  name?: string;
+  email?: string;
+  phone?: string;
+  skills?: string[];
+  experience?: { company?: string; role?: string; description?: string; start_date?: string; end_date?: string }[];
+  education?: { university?: string; degree?: string; field_of_study?: string; start_date?: string; end_date?: string }[];
+  languages?: string[];
+  certifications?: string[];
+}
+
+interface PIIItem {
+  type: string;
+  value: string;
+}
+
 const Profile = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -47,6 +64,11 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // AI CV Parsing state
+  const [parsing, setParsing] = useState(false);
+  const [parsedProfile, setParsedProfile] = useState<ParsedProfile | null>(null);
+  const [piiDetected, setPiiDetected] = useState<PIIItem[]>([]);
 
   useEffect(() => {
     if (user) fetchProfile();
@@ -87,8 +109,8 @@ const Profile = () => {
   const handleUploadCV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-    const allowedTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-    if (!allowedTypes.includes(file.type)) { toast({ title: "Invalid file", description: "Please upload a PDF or Word document.", variant: "destructive" }); return; }
+    const allowedTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/jpeg", "image/jpg", "image/png"];
+    if (!allowedTypes.includes(file.type)) { toast({ title: "Invalid file", description: "Please upload a PDF, Word document, or image.", variant: "destructive" }); return; }
     if (file.size > 10 * 1024 * 1024) { toast({ title: "File too large", description: "Max file size is 10MB.", variant: "destructive" }); return; }
     setUploading(true);
     const filePath = `${user.id}/${file.name}`;
@@ -96,14 +118,68 @@ const Profile = () => {
     if (uploadError) { toast({ title: "Upload failed", description: uploadError.message, variant: "destructive" }); setUploading(false); return; }
     await supabase.from("profiles").update({ cv_url: filePath } as any).eq("user_id", user.id);
     setCvUrl(filePath); setCvFileName(file.name);
-    toast({ title: "📄 CV uploaded!" }); setUploading(false);
+    toast({ title: "📄 CV uploaded!" });
+    setUploading(false);
+
+    // Auto-parse with AI
+    await parseCV(file);
+  };
+
+  const parseCV = async (file: File) => {
+    setParsing(true);
+    setParsedProfile(null);
+    setPiiDetected([]);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${BACKEND_URL}/api/upload-cv`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error("CV parsing failed");
+      const data = await res.json();
+      setParsedProfile(data.parsed_profile || null);
+      setPiiDetected(data.pii_detected || []);
+      toast({ title: "🧠 CV parsed with AI!" });
+    } catch (err) {
+      console.warn("CV parsing failed:", err);
+      toast({ title: "CV uploaded but parsing unavailable", description: "The AI parser is currently offline. Your CV is still saved.", variant: "destructive" });
+    }
+    setParsing(false);
+  };
+
+  const autoFillFromParsed = () => {
+    if (!parsedProfile) return;
+    if (parsedProfile.name && !displayName) setDisplayName(parsedProfile.name);
+    if (parsedProfile.education?.length) {
+      const newEdu: Education[] = parsedProfile.education.map((e) => ({
+        university: e.university || "",
+        degree: e.degree || "",
+        field_of_study: e.field_of_study || "",
+        start_date: e.start_date || "",
+        end_date: e.end_date || "",
+      }));
+      setEducation(newEdu);
+    }
+    if (parsedProfile.experience?.length) {
+      const newWork: WorkExperience[] = parsedProfile.experience.map((w) => ({
+        company: w.company || "",
+        role: w.role || "",
+        description: w.description || "",
+        start_date: w.start_date || "",
+        end_date: w.end_date || "",
+      }));
+      setWorkExperience(newWork);
+    }
+    toast({ title: "✨ Profile auto-filled from CV!" });
   };
 
   const handleDeleteCV = async () => {
     if (!user || !cvUrl) return;
     await supabase.storage.from("cvs").remove([cvUrl]);
     await supabase.from("profiles").update({ cv_url: null } as any).eq("user_id", user.id);
-    setCvUrl(null); setCvFileName(null); toast({ title: "CV removed" });
+    setCvUrl(null); setCvFileName(null); setParsedProfile(null); setPiiDetected([]);
+    toast({ title: "CV removed" });
   };
 
   const addEducation = () => { setEducation([...education, { university: "", degree: "", field_of_study: "", start_date: "", end_date: "" }]); };
@@ -192,9 +268,9 @@ const Profile = () => {
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary to-secondary/60" />
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-secondary" /> CV / Resume 📄</CardTitle>
-            <CardDescription>Upload your CV (PDF or Word, max 10MB)</CardDescription>
+            <CardDescription>Upload your CV — AI will parse it and auto-fill your profile</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {cvUrl ? (
               <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="flex items-center gap-3 rounded-xl border p-4 bg-muted/30 card-glow">
                 <FileText className="h-6 w-6 text-secondary" />
@@ -204,14 +280,129 @@ const Profile = () => {
               </motion.div>
             ) : (
               <>
-                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleUploadCV} />
+                <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" className="hidden" onChange={handleUploadCV} />
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="gap-2 font-bold h-11">
+                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading || parsing} className="gap-2 font-bold h-11">
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Upload CV
                   </Button>
                 </motion.div>
               </>
             )}
+
+            {/* Parsing indicator */}
+            {parsing && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <div>
+                  <p className="font-semibold text-sm">Parsing your CV with AI...</p>
+                  <p className="text-xs text-muted-foreground">This takes 5–10 seconds</p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Parsed Results */}
+            <AnimatePresence>
+              {parsedProfile && !parsing && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
+                  {/* PII Warnings */}
+                  {piiDetected.length > 0 && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl border border-destructive/20 bg-destructive/5">
+                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-destructive">PII detected in your CV:</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {piiDetected.map((pii, i) => (
+                            <Badge key={i} variant="outline" className="text-[10px] border-destructive/20 text-destructive">
+                              {pii.type}: {pii.value}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Parsed Data Summary */}
+                  <div className="p-4 rounded-xl border border-accent/20 bg-accent/5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Brain className="h-4 w-4 text-accent" />
+                        <span className="font-bold text-sm">AI Parsed Profile</span>
+                      </div>
+                      <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                        <Button size="sm" onClick={autoFillFromParsed} className="gap-1.5 text-xs font-bold bg-accent hover:bg-accent/90 text-accent-foreground h-8">
+                          <Wand2 className="h-3.5 w-3.5" /> Auto-fill Profile
+                        </Button>
+                      </motion.div>
+                    </div>
+
+                    {parsedProfile.name && (
+                      <div className="text-xs"><span className="font-semibold text-muted-foreground">Name:</span> <span className="font-medium">{parsedProfile.name}</span></div>
+                    )}
+
+                    {parsedProfile.skills && parsedProfile.skills.length > 0 && (
+                      <div>
+                        <span className="text-xs font-semibold text-muted-foreground">Skills:</span>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {parsedProfile.skills.map((skill, i) => (
+                            <Badge key={i} variant="secondary" className="text-[10px] font-bold">{skill}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedProfile.education && parsedProfile.education.length > 0 && (
+                      <div>
+                        <span className="text-xs font-semibold text-muted-foreground">Education: {parsedProfile.education.length} entries</span>
+                        <div className="mt-1 space-y-1">
+                          {parsedProfile.education.map((e, i) => (
+                            <div key={i} className="text-xs flex items-center gap-1.5">
+                              <CheckCircle className="h-3 w-3 text-accent" />
+                              <span>{e.degree} {e.field_of_study ? `in ${e.field_of_study}` : ""} — {e.university}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedProfile.experience && parsedProfile.experience.length > 0 && (
+                      <div>
+                        <span className="text-xs font-semibold text-muted-foreground">Experience: {parsedProfile.experience.length} entries</span>
+                        <div className="mt-1 space-y-1">
+                          {parsedProfile.experience.map((w, i) => (
+                            <div key={i} className="text-xs flex items-center gap-1.5">
+                              <CheckCircle className="h-3 w-3 text-secondary" />
+                              <span>{w.role} at {w.company}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedProfile.languages && parsedProfile.languages.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground">Languages:</span>
+                        <div className="flex gap-1">
+                          {parsedProfile.languages.map((l, i) => (
+                            <Badge key={i} variant="outline" className="text-[10px]">{l}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {parsedProfile.certifications && parsedProfile.certifications.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground">Certs:</span>
+                        <div className="flex gap-1 flex-wrap">
+                          {parsedProfile.certifications.map((c, i) => (
+                            <Badge key={i} variant="outline" className="text-[10px]">{c}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </CardContent>
         </Card>
       </motion.div>

@@ -59,30 +59,39 @@ const JobTracking = () => {
   const fetchRecommendations = async () => {
     if (!user) return;
     setRecsLoading(true);
-    try {
-      const [eduRes, workRes, profileRes] = await Promise.all([
-        supabase.from("education" as any).select("*").eq("user_id", user.id),
-        supabase.from("work_experience" as any).select("*").eq("user_id", user.id),
-        supabase.from("profiles").select("bio").eq("user_id", user.id).single(),
-      ]);
 
+    const [eduRes, workRes, profileRes] = await Promise.all([
+      supabase.from("education" as any).select("*").eq("user_id", user.id),
+      supabase.from("work_experience" as any).select("*").eq("user_id", user.id),
+      supabase.from("profiles").select("bio").eq("user_id", user.id).single(),
+    ]);
+
+    const education = eduRes.data || [];
+    const workExperience = workRes.data || [];
+    const bio = profileRes.data?.bio || "";
+
+    try {
       const res = await fetch(`${BACKEND_URL}/api/recommended-jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          education: eduRes.data || [],
-          work_experience: workRes.data || [],
-          bio: profileRes.data?.bio || "",
-          cv_text: null,
-        }),
+        body: JSON.stringify({ education, work_experience: workExperience, bio, cv_text: null }),
       });
 
-      if (!res.ok) throw new Error("Backend error");
+      if (!res.ok) throw new Error("Brev backend error");
       const data = await res.json();
       setRecommendations(data.jobs || []);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load recommendations");
+    } catch (brevErr) {
+      console.warn("Brev backend failed, falling back to edge function:", brevErr);
+      try {
+        const { data, error } = await supabase.functions.invoke("recommended-jobs", {
+          body: { education, work_experience: workExperience, bio },
+        });
+        if (error) throw error;
+        setRecommendations(data.jobs || []);
+      } catch (fallbackErr) {
+        console.error(fallbackErr);
+        toast.error("Failed to load recommendations");
+      }
     }
     setRecsLoading(false);
   };

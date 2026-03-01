@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Upload, FileText, Loader2, User, GraduationCap, Briefcase, Sparkles, Save, Brain, AlertTriangle, CheckCircle, Wand2 } from "lucide-react";
+import { Plus, Trash2, Upload, FileText, Loader2, User, GraduationCap, Briefcase, Sparkles, Save, Brain, CheckCircle, Wand2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AvatarSelector } from "@/components/AvatarSelector";
 import { BACKEND_URL } from "@/config/backend";
@@ -44,11 +44,6 @@ interface ParsedProfile {
   certifications?: string[];
 }
 
-interface PIIItem {
-  type: string;
-  value: string;
-}
-
 const Profile = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -68,7 +63,6 @@ const Profile = () => {
   // AI CV Parsing state
   const [parsing, setParsing] = useState(false);
   const [parsedProfile, setParsedProfile] = useState<ParsedProfile | null>(null);
-  const [piiDetected, setPiiDetected] = useState<PIIItem[]>([]);
 
   useEffect(() => {
     if (user) fetchProfile();
@@ -128,7 +122,6 @@ const Profile = () => {
   const parseCV = async (file: File) => {
     setParsing(true);
     setParsedProfile(null);
-    setPiiDetected([]);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -138,8 +131,12 @@ const Profile = () => {
       });
       if (!res.ok) throw new Error("CV parsing failed");
       const data = await res.json();
-      setParsedProfile(data.parsed_profile || null);
-      setPiiDetected(data.pii_detected || []);
+      const parsed = data.parsed_profile || null;
+      setParsedProfile(parsed);
+      if (parsed) {
+        // Auto-fill immediately
+        autoFillFromParsedData(parsed);
+      }
       toast({ title: "🧠 CV parsed with AI!" });
     } catch (err) {
       console.warn("CV parsing failed:", err);
@@ -148,11 +145,10 @@ const Profile = () => {
     setParsing(false);
   };
 
-  const autoFillFromParsed = () => {
-    if (!parsedProfile) return;
-    if (parsedProfile.name && !displayName) setDisplayName(parsedProfile.name);
-    if (parsedProfile.education?.length) {
-      const newEdu: Education[] = parsedProfile.education.map((e) => ({
+  const autoFillFromParsedData = (data: ParsedProfile) => {
+    if (data.name && !displayName) setDisplayName(data.name);
+    if (data.education?.length) {
+      const newEdu: Education[] = data.education.map((e) => ({
         university: e.university || "",
         degree: e.degree || "",
         field_of_study: e.field_of_study || "",
@@ -161,8 +157,8 @@ const Profile = () => {
       }));
       setEducation(newEdu);
     }
-    if (parsedProfile.experience?.length) {
-      const newWork: WorkExperience[] = parsedProfile.experience.map((w) => ({
+    if (data.experience?.length) {
+      const newWork: WorkExperience[] = data.experience.map((w) => ({
         company: w.company || "",
         role: w.role || "",
         description: w.description || "",
@@ -171,6 +167,11 @@ const Profile = () => {
       }));
       setWorkExperience(newWork);
     }
+  };
+
+  const autoFillFromParsed = () => {
+    if (!parsedProfile) return;
+    autoFillFromParsedData(parsedProfile);
     toast({ title: "✨ Profile auto-filled from CV!" });
   };
 
@@ -178,7 +179,7 @@ const Profile = () => {
     if (!user || !cvUrl) return;
     await supabase.storage.from("cvs").remove([cvUrl]);
     await supabase.from("profiles").update({ cv_url: null } as any).eq("user_id", user.id);
-    setCvUrl(null); setCvFileName(null); setParsedProfile(null); setPiiDetected([]);
+    setCvUrl(null); setCvFileName(null); setParsedProfile(null);
     toast({ title: "CV removed" });
   };
 
@@ -304,23 +305,6 @@ const Profile = () => {
             <AnimatePresence>
               {parsedProfile && !parsing && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-                  {/* PII Warnings */}
-                  {piiDetected.length > 0 && (
-                    <div className="flex items-start gap-2 p-3 rounded-xl border border-destructive/20 bg-destructive/5">
-                      <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-destructive">PII detected in your CV:</p>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {piiDetected.map((pii, i) => (
-                            <Badge key={i} variant="outline" className="text-[10px] border-destructive/20 text-destructive">
-                              {pii.type}: {pii.value}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Parsed Data Summary */}
                   <div className="p-4 rounded-xl border border-accent/20 bg-accent/5 space-y-3">
                     <div className="flex items-center justify-between">

@@ -67,13 +67,23 @@ const Postgrad = () => {
         }),
       });
 
-      if (!res.ok) throw new Error("Backend error");
+      if (!res.ok) throw new Error("Brev backend error");
       const data = await res.json();
       setResults(data?.programmes || []);
       await awardXP(15, "Postgrad Search", `Searched for ${degreeType} programmes`);
       await unlockAchievement("postgrad_explorer");
-    } catch {
-      setResults([]);
+    } catch (brevErr) {
+      console.warn("Brev backend failed, falling back to edge function:", brevErr);
+      try {
+        const { data } = await supabase.functions.invoke("postgrad-match", {
+          body: { interests, background, degree_type: degreeType },
+        });
+        setResults(data?.programmes || []);
+        await awardXP(15, "Postgrad Search", `Searched for ${degreeType} programmes`);
+        await unlockAchievement("postgrad_explorer");
+      } catch {
+        setResults([]);
+      }
     }
     setLoading(false);
   };
